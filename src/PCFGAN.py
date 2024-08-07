@@ -4,7 +4,7 @@ from PIL import ImageFile
 from torch import nn
 from tqdm import tqdm
 
-from src.networks.nn import DevelopmentLayer
+from src.pathdevelopment.unitarydevelopmentlayer import UnitaryDevelopmentLayer
 from src.trainers.trainer import Trainer
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -33,7 +33,7 @@ class char_func_path(nn.Module):
         self.hidden_size = hidden_size
         self.input_size = input_size
         self.input_size = input_size
-        self.unitary_development = DevelopmentLayer(
+        self.unitary_development = UnitaryDevelopmentLayer(
             input_size=self.input_size,
             hidden_size=self.hidden_size,
             channels=self.num_samples,
@@ -69,6 +69,7 @@ class char_func_path(nn.Module):
         self, X1: torch.tensor, X2: torch.tensor, Lambda=0.1
     ) -> torch.float:
         """
+        TODO: this description is just not true.
         Distance measure given by the Hilbert-Schmidt inner product.
 
         Args:
