@@ -1,5 +1,7 @@
 import os
+import random
 
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -8,6 +10,11 @@ from src.PCFGAN import PCFGANTrainer
 from src.evaluations.test_metrics import get_standard_test_metrics
 from src.networks.generators import LSTMGenerator
 from src.utils import save_obj
+
+random.seed(42)
+np.random.seed(42)
+torch.manual_seed(42)
+torch.cuda.manual_seed_all(42)
 
 # Define the parameters
 data_size = 1000
@@ -65,7 +72,7 @@ config = {
     "lr_D": 0.001,
     "D_steps_per_G_step": 2,
     # NUM EPOCHS
-    "steps": 1001,
+    "num_epochs": 1001,
     "G_input_dim": 2,
     "G_hidden_dim": 8,
     "input_dim": 2,
@@ -85,7 +92,7 @@ config = {
 config = Config(config)
 
 trainer = PCFGANTrainer(
-    G=LSTMGenerator(
+    generator=LSTMGenerator(
         input_dim=2,
         hidden_dim=8,
         output_dim=2,
@@ -94,18 +101,16 @@ trainer = PCFGANTrainer(
         BM=True,
         activation=nn.Identity(),
     ),
+    train_dataset=train_data,
+    config=config,
     # wip: THESE TWO SEEM UNUSED??
     test_metrics_train=get_standard_test_metrics(train_data),
     test_metrics_test=get_standard_test_metrics(train_data),
-    train_dl=train_data,
     # WIP I THINK BATCH SIZE DOES SMTHG DIFFERENT
-    batch_size=data_size,
-    # NUM_EPOCHS
-    n_gradient_steps=config.steps,
-    config=config,
 )
 
 trainer.fit(config.device)
 save_obj(
-    trainer.G.state_dict(), os.path.join(config.exp_dir, "generator_state_dict.pt")
+    trainer.generator.state_dict(),
+    os.path.join(config.exp_dir, "generator_state_dict.pt"),
 )

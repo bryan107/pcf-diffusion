@@ -1,8 +1,5 @@
-from os import path as pt
-
-import matplotlib.pyplot as plt
+import numpy as np
 import torch
-import torch.optim.swa_utils as swa_utils
 from PIL import ImageFile
 from torch import nn
 from tqdm import tqdm
@@ -13,18 +10,12 @@ from src.trainers.trainer import Trainer
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
-def toggle_grad(model, requires_grad):
-    for p in model.parameters():
-        p.requires_grad_(requires_grad)
-
-
 class char_func_path(nn.Module):
     def __init__(
         self,
         num_samples,
         hidden_size,
         input_size,
-        add_time: bool,
         init_range: float = 1,
     ):
         """
@@ -37,14 +28,11 @@ class char_func_path(nn.Module):
             add_time (bool): Whether to add time dimension to the input.
             init_range (float, optional): Range for weight initialization. Defaults to 1.
         """
-        super(char_func_path, self).__init__()
+        super().__init__()
         self.num_samples = num_samples
         self.hidden_size = hidden_size
         self.input_size = input_size
-        if add_time:
-            self.input_size = input_size + 1
-        else:
-            self.input_size = input_size + 0
+        self.input_size = input_size
         self.unitary_development = DevelopmentLayer(
             input_size=self.input_size,
             hidden_size=self.hidden_size,
@@ -55,10 +43,6 @@ class char_func_path(nn.Module):
         )
         for param in self.unitary_development.parameters():
             param.requires_grad = True
-        self.add_time = add_time
-
-    def reset_parameters(self):
-        pass
 
     @staticmethod
     def HS_norm(X: torch.tensor, Y: torch.Tensor):
@@ -130,45 +114,57 @@ class char_func_path(nn.Module):
 
 
 class PCFGANTrainer(Trainer):
-    def __init__(self, G, train_dl, config, **kwargs):
+    def __init__(
+        self,
+        generator,
+        train_dataset,
+        config,
+        test_metrics_train,
+        test_metrics_test,
+    ):
         """
         Trainer class for the basic PCF-GAN, without time serier embedding module.
 
         Args:
-            G (torch.nn.Module): PCFG generator model.
+            generator (torch.nn.Module): PCFG generator model.
             train_dl (torch.utils.data.DataLoader): Training data loader.
             config: Configuration object containing hyperparameters and settings.
             **kwargs: Additional keyword arguments for the base trainer class.
         """
         super().__init__(
-            G=G,
-            G_optimizer=torch.optim.Adam(
-                G.parameters(), lr=config.lr_G, betas=(0, 0.9), weight_decay=0
-            ),
-            **kwargs
+            test_metrics_train=test_metrics_train,
+            test_metrics_test=test_metrics_test,
+            num_epochs=config.num_epochs,
         )
+
+        # Training params
         self.config = config
-        self.add_time = config.add_time
-        self.train_dl = train_dl
-        self.D_steps_per_G_step = config.D_steps_per_G_step
+        self.batch_size = config.batch_size
         char_input_dim = self.config.input_dim
-        self.char_func = char_func_path(
+
+        # Generator Params
+        self.generator = generator
+        self.generator_optim = torch.optim.Adam(
+            generator.parameters(), lr=config.lr_G, betas=(0, 0.9), weight_decay=0
+        )
+        self.G_lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(
+            self.generator_optim, gamma=config.gamma
+        )
+
+        # Discriminator Params
+        self.discriminator = char_func_path(
             num_samples=config.M_num_samples,
             hidden_size=config.M_hidden_dim,
             input_size=char_input_dim,
-            add_time=self.add_time,
         )
-        self.D = self.char_func
-        self.char_optimizer = torch.optim.Adam(
-            self.char_func.parameters(), lr=config.lr_M
+        self.discriminator_optim = torch.optim.Adam(
+            self.discriminator.parameters(), lr=config.lr_M
         )
-        self.averaged_G = swa_utils.AveragedModel(G)
-        self.G_lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(
-            self.G_optimizer, gamma=config.gamma
-        )
-        self.M_lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(
-            self.char_optimizer, gamma=config.gamma
-        )
+        self.D_steps_per_G_step = config.D_steps_per_G_step
+
+        # Dataset
+        self.train_dl = train_dataset
+        return
 
     def fit(self, device):
         """
@@ -178,13 +174,13 @@ class PCFGANTrainer(Trainer):
             device: Device to perform training on.
         """
 
-        self.G.to(device)
-        self.char_func.to(device)
+        self.generator.to(device)
+        self.discriminator.to(device)
 
-        for i in tqdm(range(self.n_gradient_steps)):
+        for i in tqdm(range(self.num_epochs)):
             self.step(device, i)
             if i > self.config.swa_step_start:
-                self.averaged_G.update_parameters(self.G)
+                self.averaged_G.update_parameters(self.generator)
 
     def step(self, device, step):
         """
@@ -194,340 +190,78 @@ class PCFGANTrainer(Trainer):
             device: Device to perform training on.
             step (int): Current training step.
         """
+        D_losses_this_epoch = []
+        targets = next(iter(self.train_dl))[0].to(device)
+
+        # Discriminator training
         for i in range(self.D_steps_per_G_step):
-            # generate x_fake
+            D_loss = self._training_step_discr(targets, device)
+            D_losses_this_epoch.append(D_loss)
+        self.losses_history["D_loss"].append(np.mean(D_losses_this_epoch))
 
-            with torch.no_grad():
-                # for inputs in self.train_dl:
-                #     print(inputs.size()) ???
-                x_real_batch = next(iter(self.train_dl))[0].to(device)
-                x_fake = self.G(
-                    batch_size=self.batch_size,
-                    n_lags=self.config.n_lags,
-                    device=device,
-                )
+        # Generator training
+        G_loss = self._training_step_gen(targets, device)
+        self.losses_history["G_loss"].append(G_loss)
 
-            D_loss = self.D_trainstep(x_fake, x_real_batch)
-            if i == 0:
-                self.losses_history["D_loss"].append(D_loss)
-            G_loss = self.G_trainstep(x_real_batch, device, step)
+        if step % 100 == 0:
+            fake_samples = self.generator(
+                batch_size=self.batch_size,
+                n_lags=self.config.n_lags,
+                device=device,
+            )
+            self.evaluate(fake_samples, targets, step, self.config)
+
         if step % 500 == 0:
             self.G_lr_scheduler.step()
-            for param_group in self.G_optimizer.param_groups:
+            for param_group in self.generator_optim.param_groups:
                 print("Learning Rate: {}".format(param_group["lr"]))
-        else:
-            pass
 
-    def G_trainstep(self, x_real, device, step):
+        return
+
+    def _training_step_gen(self, targets, device):
         """
         Performs one training step for the generator.
 
         Args:
-            x_real: Real samples for training.
+            targets: Real samples for training.
             device: Device to perform training on.
-            step (int): Current training step.
 
         Returns:
             float: Generator loss value.
         """
-        x_fake = self.G(
+        fake_samples = self.generator(
             batch_size=self.batch_size,
             n_lags=self.config.n_lags,
             device=device,
         )
-        toggle_grad(self.G, True)
-        self.G.train()
-        self.G_optimizer.zero_grad()
-        self.char_func.train()
-        # if self.loss == "both":
-        G_loss = self.char_func.distance_measure(x_real, x_fake, Lambda=0.1)
+        self.generator.train()
+        self.generator_optim.zero_grad()
+        G_loss = self.discriminator.distance_measure(targets, fake_samples, Lambda=0.1)
         G_loss.backward()
-        self.losses_history["G_loss"].append(G_loss.item())
-        self.G_optimizer.step()
-        if step % 100 == 0:
-            self.evaluate(x_fake, x_real, step, self.config)
-
+        self.generator_optim.step()
         return G_loss.item()
 
-    def D_trainstep(self, x_fake, x_real):
+    def _training_step_discr(self, targets, device):
         """
         Performs one training step for the discriminator.
 
         Args:
-            x_fake: Fake samples generated by the generator.
-            x_real: Real samples for training.
-
+            targets: Real samples for training.
+            device: Device to perform training on.
         Returns:
             float: Discriminator loss value.
         """
-        toggle_grad(self.char_func, True)
-        self.char_func.train()
-        self.char_optimizer.zero_grad()
+        self.discriminator_optim.zero_grad()
 
-        # On real data
-        x_real.requires_grad_()
-        d_loss = -self.char_func.distance_measure(x_real, x_fake, Lambda=0.1)
-
+        with torch.no_grad():
+            # TODO 07/08/2024 nie_k: looks sus to ask [0] but next iter is common for dataloaders.
+            fake_samples = self.generator(
+                batch_size=self.batch_size,
+                n_lags=self.config.n_lags,
+                device=device,
+            )
+        d_loss = -self.discriminator.distance_measure(targets, fake_samples, Lambda=0.1)
         d_loss.backward()
 
-        # Step discriminator params
-        self.char_optimizer.step()
-
-        # Toggle gradient to False
-        toggle_grad(self.char_func, False)
-
+        self.discriminator_optim.step()
         return d_loss.item()
-
-
-class RPCFGANTrainer(Trainer):
-    def __init__(self, G, D, train_dl, config, **kwargs):
-        """
-        Trainer class for PCFGAN with time series embedding,
-            which provide extrac time series reconstruction functionality.
-
-        Args:
-            G (torch.nn.Module): RPCFG generator model.
-            D (torch.nn.Module): RPCFG discriminator model (character function).
-            train_dl (torch.utils.data.DataLoader): Training data loader.
-            config: Configuration object containing hyperparameters and settings.
-            **kwargs: Additional keyword arguments for the base trainer class.
-        """
-        super(RPCFGANTrainer, self).__init__(
-            G=G,
-            G_optimizer=torch.optim.Adam(
-                G.parameters(), lr=config.lr_G, betas=(0, 0.9)
-            ),
-            **kwargs
-        )
-        self.config = config
-        self.add_time = config.add_time
-        self.train_dl = train_dl
-        self.D_steps_per_G_step = config.D_steps_per_G_step
-        self.D = D
-        char_input_dim = self.config.D_out_dim
-
-        self.D_optimizer = torch.optim.Adam(
-            self.D.parameters(), lr=config.lr_D, betas=(0, 0.9)
-        )
-        self.char_func = char_func_path(
-            num_samples=config.M_num_samples,
-            hidden_size=config.M_hidden_dim,
-            input_size=char_input_dim,
-            add_time=self.add_time,
-            init_range=config.init_range,
-        )
-        self.char_func1 = char_func_path(
-            num_samples=config.M_num_samples,
-            hidden_size=config.M_hidden_dim,
-            input_size=char_input_dim,
-            add_time=self.add_time,
-            init_range=config.init_range,
-        )
-
-        self.char_optimizer = torch.optim.Adam(
-            self.char_func.parameters(), betas=(0, 0.9), lr=config.lr_M
-        )
-        self.char_optimizer1 = torch.optim.Adam(
-            self.char_func1.parameters(), betas=(0, 0.9), lr=config.lr_M
-        )
-
-        self.averaged_G = swa_utils.AveragedModel(G)
-        self.G_lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(
-            self.G_optimizer, gamma=config.gamma
-        )
-        self.D_lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(
-            self.D_optimizer, gamma=config.gamma
-        )
-        self.M_lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(
-            self.char_optimizer, gamma=config.gamma
-        )
-        self.M_lr_scheduler1 = torch.optim.lr_scheduler.ExponentialLR(
-            self.char_optimizer1, gamma=config.gamma
-        )
-        self.Lambda1 = self.config.Lambda1
-        self.Lambda2 = self.config.Lambda2
-        if self.config.BM:
-            self.noise_scale = self.config.noise_scale
-        else:
-            self.noise_scale = 0.3
-
-    def fit(self, device):
-        """
-        Trains the PCFGAN model.
-
-        Args:
-            device: Device to perform training on.
-        """
-        self.G.to(device)
-        self.D.to(device)
-        self.char_func.to(device)
-        self.char_func1.to(device)
-
-        for i in tqdm(range(self.n_gradient_steps)):
-            self.step(device, i)
-            if i > self.config.swa_step_start:
-                self.averaged_G.update_parameters(self.G)
-
-    def step(self, device, step):
-        """
-        Performs one training step.
-
-        Args:
-            device: Device to perform training on.
-            step (int): Current training step.
-        """
-        for i in range(self.D_steps_per_G_step):
-            # generate x_fake
-
-            with torch.no_grad():
-                z = (
-                    self.noise_scale
-                    * torch.randn(
-                        self.config.batch_size,
-                        self.config.n_lags,
-                        self.config.G_input_dim,
-                    )
-                ).to(device)
-                if self.config.BM:
-                    z = z.cumsum(1)
-                else:
-                    pass
-                x_real_batch = next(iter(self.train_dl))[0].to(device)
-                x_fake = self.G(
-                    batch_size=self.batch_size,
-                    n_lags=self.config.n_lags,
-                    z=z,
-                    device=device,
-                )
-
-            self.M_trainstep(x_fake, x_real_batch, z)
-            D_loss, enc_loss, reg_loss = self.D_trainstep(
-                x_fake, x_real_batch, z, self.Lambda1, self.Lambda2
-            )
-            if i == 0:
-                self.losses_history["D_loss"].append(D_loss)
-                self.losses_history["recovery_loss"].append(enc_loss)
-                self.losses_history["regularzation_loss"].append(reg_loss)
-
-        G_loss = self.G_trainstep(x_real_batch, device, step)
-        self.losses_history["G_loss"].append(G_loss)
-        torch.cuda.empty_cache()
-        if step % 500 == 0:
-            self.D_lr_scheduler.step()
-            self.G_lr_scheduler.step()
-            for param_group in self.D_optimizer.param_groups:
-                print("Learning Rate: {}".format(param_group["lr"]))
-        else:
-            pass
-
-        if step % 2000 == 0:
-            latent_x_fake = self.D(x_fake)
-            latent_x_real = self.D(x_real_batch)
-            x_real_dim = latent_x_fake.shape[-1]
-            for j in range(x_real_dim):
-                plt.plot(
-                    latent_x_fake[:100, :, j].detach().cpu().numpy().T,
-                    "C%s" % j,
-                    alpha=0.1,
-                )
-            plt.savefig(
-                pt.join(self.config.exp_dir, "latent_x_fake_" + str(step) + ".png")
-            )
-            plt.close()
-            for j in range(x_real_dim):
-                plt.plot(
-                    latent_x_real[:100, :, j].detach().cpu().numpy().T,
-                    "C%s" % j,
-                    alpha=0.1,
-                )
-            plt.savefig(
-                pt.join(self.config.exp_dir, "latent_x_real_" + str(step) + ".png")
-            )
-            plt.close()
-
-    def G_trainstep(self, x_real, device, step):
-        """
-        Performs one training step for the generator.
-
-        Args:
-            x_real: Real samples for training.
-            device: Device to perform training on.
-            step (int): Current training step.
-
-        Returns:
-            float: Generator loss value.
-        """
-        x_fake = self.G(
-            batch_size=self.batch_size, n_lags=self.config.n_lags, device=device
-        )
-
-        toggle_grad(self.G, True)
-        self.G.train()
-        self.G_optimizer.zero_grad()
-        self.D.train()
-        self.char_func.train()
-        G_loss = self.char_func.distance_measure(self.D(x_real), self.D(x_fake))
-        G_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.G.parameters(), self.config.grad_clip)
-        self.G_optimizer.step()
-        if step % 2000 == 0:
-            self.evaluate(x_fake, x_real, step, self.config)
-        return G_loss.item()
-
-    def M_trainstep(self, x_fake, x_real, z):
-        """
-        Performs one training step for the character function.
-
-        Args:
-            x_fake: Fake samples generated by the generator.
-            x_real: Real samples for training.
-            z: Latent noise used for generating fake samples.
-        """
-        toggle_grad(self.char_func, True)
-        self.char_func.train()
-        self.D.train()
-        self.char_optimizer.zero_grad()
-        char_loss = -self.char_func.distance_measure(self.D(x_real), self.D(x_fake))
-        char_loss.backward()
-        self.char_optimizer.step()
-        toggle_grad(self.char_func, False)
-
-        toggle_grad(self.char_func1, True)
-        self.char_func1.train()
-        self.char_optimizer1.zero_grad()
-        char_loss1 = self.char_func1.distance_measure(self.D(x_real), z)
-        char_loss1.backward()
-        self.char_optimizer1.step()
-        toggle_grad(self.char_func1, False)
-
-    def D_trainstep(self, x_fake, x_real, z, Lambda1, Lambda2):
-        """
-        Performs one training step for the discriminator.
-
-        Args:
-            x_fake: Fake samples generated by the generator.
-            x_real: Real samples for training.
-            z: Latent noise used for generating fake samples.
-            Lambda1: Weight for the reconstruction loss.
-            Lambda2: Weight for the regularization loss.
-
-        Returns:
-            Tuple[float, float, float]: Discriminator loss, reconstruction loss, and regularization loss.
-        """
-        x_real.requires_grad_()
-        self.D.train()
-
-        self.char_func.train()
-        self.char_func1.train()
-        toggle_grad(self.D, True)
-        rec_loss = Lambda1 * nn.MSELoss()(self.D(x_fake), z)
-        reg_loss = Lambda2 * self.char_func1.distance_measure(self.D(x_real), z)
-        g_loss = -self.char_func.distance_measure(self.D(x_real), self.D(x_fake))
-
-        d_loss = g_loss + rec_loss + reg_loss
-        d_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.D.parameters(), self.config.grad_clip)
-        self.D_optimizer.step()
-        toggle_grad(self.D, False)
-
-        return g_loss.item(), rec_loss.item(), reg_loss.item()

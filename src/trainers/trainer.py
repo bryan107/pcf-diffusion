@@ -5,24 +5,20 @@ from os import path as pt
 import matplotlib.pyplot as plt
 import seaborn as sns
 import torch
+from torch import nn
 
 
-class Trainer:
+class Trainer(nn.Module):
     def __init__(
         self,
-        batch_size,
-        G,
-        G_optimizer,
         test_metrics_train,
         test_metrics_test,
-        n_gradient_steps,
+        num_epochs,
         foo=lambda x: x,
     ):
-        self.batch_size = batch_size
+        super().__init__()
 
-        self.G = G
-        self.G_optimizer = G_optimizer
-        self.n_gradient_steps = n_gradient_steps
+        self.num_epochs = num_epochs
 
         self.losses_history = defaultdict(list)
 
