@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from src.networks.residualdeepnetwork import ResidualDeepNetwork
-from src.utils import init_weights
+from src.utils.utils import init_weights
 
 
 class LSTMGenerator(nn.Module):
@@ -65,11 +65,11 @@ class LSTMGenerator(nn.Module):
         return self.noise_scale * torch.randn(*shape, self.input_dim, device=device)
 
     def forward(
-            self,
-            batch_size: int,
-            n_lags: int,
-            device: str,
-            noise_sequence_z: torch.Tensor = None,
+        self,
+        batch_size: int,
+        n_lags: int,
+        device: str,
+        noise_sequence_z: torch.Tensor = None,
     ) -> torch.Tensor:
         noise_initial_hidden_states = self.get_noise_vector((batch_size,), device)
 
@@ -96,7 +96,7 @@ class LSTMGenerator(nn.Module):
         output = self.linear(self.activation(hn))
 
         assert (
-                output.shape[1] == n_lags
+            output.shape[1] == n_lags
         ), f"output.shape[1] = {output.shape[1]} != {n_lags} = n_lags"
 
         return output

@@ -5,10 +5,10 @@ from os import path as pt
 import matplotlib.pyplot as plt
 import seaborn as sns
 import torch
-from torch import nn
+from pytorch_lightning import LightningModule
 
 
-class Trainer(nn.Module):
+class Trainer(LightningModule):
     def __init__(
         self,
         test_metrics_train,

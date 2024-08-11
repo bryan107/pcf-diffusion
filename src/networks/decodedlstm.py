@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from src.utils import init_weights
+from src.utils.utils import init_weights
 
 
 class DecodedLSTM(nn.Module):
