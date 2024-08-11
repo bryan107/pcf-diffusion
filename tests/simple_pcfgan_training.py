@@ -6,9 +6,9 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from src.PCFGAN import PCFGANTrainer
 from src.evaluations.test_metrics import get_standard_test_metrics
 from src.networks.generators import LSTMGenerator
+from src.trainers.pcfgan_trainer import PCFGANTrainer
 from src.utils import save_obj
 
 random.seed(42)
