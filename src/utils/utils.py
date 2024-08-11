@@ -61,3 +61,17 @@ def loader_to_cond_tensor(dl):
         y_tensor.append(y)
 
     return torch.cat(x_tensor), torch.cat(y_tensor)
+
+
+def cat_linspace_times(values_time_series):
+    assert (
+        len(values_time_series.shape) == 3
+    ), f"Input shape must be [size, length, dim] but got {values_time_series.shape}"
+
+    N, L, D = values_time_series.shape
+    tt = (
+        torch.linspace(0.0, 1, L, device=values_time_series.device)
+        .view(1, -1, 1)
+        .repeat(N, 1, 1)
+    )
+    return torch.cat([values_time_series, tt], dim=-1)

@@ -1,9 +1,8 @@
-import numpy as np
 import torch
 from PIL import ImageFile
-from tqdm import tqdm
 
 from src.PCF_with_empirical_measure import PCF_with_empirical_measure
+from src.utils.utils import cat_linspace_times
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
@@ -64,6 +63,18 @@ class PCFGANTrainer(Trainer):
         self.output_dir_images = config.exp_dir
         return
 
+    def forward(self, num_seq: int, seq_len: int) -> torch.Tensor:
+        # We follow batch first convention. (N,L,D).
+        return self.generator(num_seq, seq_len, self.device)
+
+    def sample(self, num_seq: int, seq_len: int) -> torch.Tensor:
+        out = self(
+            num_seq=num_seq,
+            seq_len=seq_len,
+        )
+        out = cat_linspace_times(out)
+        return out
+
     def configure_optimizers(self):
         optim_gen = torch.optim.Adam(
             self.generator.parameters(),
@@ -95,48 +106,12 @@ class PCFGANTrainer(Trainer):
         )
         return
 
-    def _training_step_gen(self, optim_gen, targets):
-        optim_gen.zero_grad()
-
-        fake_samples = self.generator(
-            batch_size=targets.shape[0],
-            n_lags=targets.shape[1],
-            device=self.device,
-        )
-        loss_gen = self.discriminator.distance_measure(
-            targets, fake_samples, Lambda=0.1
-        )
-
-        self.manual_backward(loss_gen)
-        optim_gen.step()
-        return loss_gen.item()
-
-    def _training_step_disc(self, optim_discr, targets):
-        optim_discr.zero_grad()
-
-        with torch.no_grad():
-            fake_samples = self.generator(
-                batch_size=targets.shape[0],
-                n_lags=targets.shape[1],
-                device=self.device,
-            )
-        loss_disc = -self.discriminator.distance_measure(
-            targets, fake_samples, Lambda=0.1
-        )
-        self.manual_backward(loss_disc)
-        optim_discr.step()
-
-        return loss_disc.item()
-
     def validation_step(self, batch, batch_nb):
         (targets,) = batch
-
-        fake_samples = self.generator(
-            batch_size=targets.shape[0],
-            n_lags=targets.shape[1],
-            device=self.device,
+        fake_samples = self.sample(
+            num_seq=targets.shape[0],
+            seq_len=targets.shape[1],
         )
-
         loss_gen = self.discriminator.distance_measure(
             targets, fake_samples, Lambda=0.1
         )
@@ -152,8 +127,39 @@ class PCFGANTrainer(Trainer):
         # TODO 11/08/2024 nie_k: A bit of a hack, I usually code this better but will do the trick for now.
         if not (self.current_epoch + 1) % 50:
             path = (
-                self.output_dir_images
-                + f"pred_vs_true_epoch_{str(self.current_epoch + 1)}"
+                    self.output_dir_images
+                    + f"pred_vs_true_epoch_{str(self.current_epoch + 1)}"
             )
             self.evaluate(fake_samples, targets, path)
         return
+
+    def _training_step_gen(self, optim_gen, targets):
+        optim_gen.zero_grad()
+
+        fake_samples = self.sample(
+            num_seq=targets.shape[0],
+            seq_len=targets.shape[1],
+        )
+        loss_gen = self.discriminator.distance_measure(
+            targets, fake_samples, Lambda=0.1
+        )
+
+        self.manual_backward(loss_gen)
+        optim_gen.step()
+        return loss_gen.item()
+
+    def _training_step_disc(self, optim_discr, targets):
+        optim_discr.zero_grad()
+
+        with torch.no_grad():
+            fake_samples = self.sample(
+                num_seq=targets.shape[0],
+                seq_len=targets.shape[1],
+            )
+        loss_disc = -self.discriminator.distance_measure(
+            targets, fake_samples, Lambda=0.1
+        )
+        self.manual_backward(loss_disc)
+        optim_discr.step()
+
+        return loss_disc.item()

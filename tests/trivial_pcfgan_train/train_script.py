@@ -110,7 +110,7 @@ logger.info("Creating the model.")
 lstm_generator = LSTMGenerator(
     input_dim=2,
     hidden_dim=8,
-    output_dim=2,
+    output_dim=1,
     n_layers=1,
     noise_scale=1.0,
     BM=True,
