@@ -18,6 +18,9 @@ pip install torch==1.11.0+cu113 -f https://download.pytorch.org/whl/cu113/torch_
 ```
 There is a dependency at the moment on `cupy`, which requires a `CUDA` installation/VS build tools. You will get errors when running the code without it.
 
+There is a thin balance to find between the packages for signatures, `torch` and `cupy`.
+Here I go with the last release of Python `3.10`.
+
 Furthermore, in order to fasttrack my own coding, I used a shortcut relying on the library `corai`. I coded it myself
 but certain pieces are a bit deprecated.  
 Normally, if you follow the following steps, you should have no issues installing it:
@@ -30,5 +33,6 @@ pip install networkx==3.3
 
 I will fix that as soon as I can! So we do not rely on `corai` and struggle doing the installation.
 
-There is a thin balance to find between the packages for signatures, `torch` and `cupy`.
-Here I go with the last release of Python `3.10`.
+# How to run
+
+Go to `tests/<name_exp>/train_script.py`. This should be runnable in the usual manner, without command line arguments.
