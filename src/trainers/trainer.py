@@ -1,3 +1,4 @@
+import os
 import time
 from collections import defaultdict
 from os import path as pt
@@ -28,26 +29,29 @@ class Trainer(LightningModule):
 
         self.init_time = time.time()
 
-    def evaluate(self, x_fake, x_real, step, config, **kwargs):
-        self.losses_history["time"].append(time.time() - self.init_time)
+        self.plot_samples = plt.subplots(1, 1)[0]
+        return
 
-        self.plot_sample_seqs(x_real, x_fake[: config.batch_size], self.config, step)
+    def evaluate(self, x_fake, x_real, path_file):
+        self.losses_history["time"].append(time.time() - self.init_time)
+        self.plot_samples.axes[0].clear()
+
+        self.plot_sample_seqs(x_real, x_fake, self.plot_samples, path_file)
         return
 
     @staticmethod
-    def plot_sample_seqs(real_X, fake_X, config, step):
-        plt.close()
-        plt.figure()
+    def plot_sample_seqs(real_X, fake_X, fig, path_file: str):
+        # path file should change if you save multiple times, extension preferably a png.
 
-        random_indices = torch.randint(0, real_X.shape[0], (config.batch_size,))
-        plt.plot(
+        random_indices = torch.randint(real_X.shape[0], (real_X.shape[0],))
+        fig.axes[0].plot(
             real_X[random_indices, :, 1].detach().cpu().numpy().T,
             real_X[random_indices, :, 0].detach().cpu().numpy().T,
             "r-x",
             alpha=0.3,
         )
 
-        plt.plot(
+        fig.axes[0].plot(
             fake_X[:, :, 1].detach().cpu().numpy().T,
             fake_X[:, :, 0].detach().cpu().numpy().T,
             "b-x",
@@ -62,8 +66,14 @@ class Trainer(LightningModule):
             Line2D([0], [0], color="b", marker="x", alpha=0.3, label="fake"),
         ]
 
-        plt.legend(handles=custom_lines)
-        plt.savefig(pt.join(config.exp_dir, "x_" + str(step) + ".png"))
+        fig.axes[0].legend(handles=custom_lines)
+
+        directory_where_to_save = os.path.dirname(path_file)
+        if not os.path.exists(directory_where_to_save):
+            if directory_where_to_save != "":
+                os.makedirs(directory_where_to_save)
+        fig.savefig(pt.join(path_file))
+
         plt.pause(0.01)
         return
 
