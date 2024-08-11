@@ -58,9 +58,9 @@ class UnitaryDevelopmentLayer(nn.Module):
                 [torch.zeros((N, 1, D), device=input.device), input], dim=1
             )
 
-        diff_input = input[:, 1:] - input[:, :-1]
+        diff_input_dx = (input[:, 1:] - input[:, :-1]).reshape(-1, input.shape[-1])
 
-        M_dX = self.projection(diff_input.reshape(-1, diff_input.shape[-1])).reshape(
+        M_dX = self.projection(diff_input_dx).reshape(
             N, -1, self.channels, self.hidden_size, self.hidden_size
         )
 

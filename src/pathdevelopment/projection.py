@@ -4,7 +4,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from src.pathdevelopment.unitary import Unitary
+from src.networks.nn import rescale_exp_matrix
+from src.pathdevelopment.unitaryliealgebra import UnitaryLieAlgebra
 
 
 class Projection(nn.Module):
@@ -19,15 +20,18 @@ class Projection(nn.Module):
             channels (int, optional): Number of channels to produce independent Lie algebra weights. Defaults to 1.
             init_range (int, optional): Range for weight initialization. Defaults to 1.
         """
-        self.__dict__.update(kwargs)
+        super().__init__()
 
-        A = torch.empty(
-            input_size, channels, hidden_size, hidden_size, dtype=torch.cfloat
-        )
+        # Very cryptic way of adding parameters
+        # self.__dict__.update(kwargs)
+
         self.channels = channels
-        super(Projection, self).__init__()
-        self.param_map = Unitary(hidden_size)
-        self.A = nn.Parameter(A)
+        self.param_map = UnitaryLieAlgebra(hidden_size)
+        self.A = nn.Parameter(
+            torch.empty(
+                input_size, channels, hidden_size, hidden_size, dtype=torch.cfloat
+            )
+        )
 
         self.triv = torch.linalg.matrix_exp
         self.init_range = init_range
@@ -36,12 +40,12 @@ class Projection(nn.Module):
         self.hidden_size = hidden_size
 
     def reset_parameters(self):
-        Unitary.unitary_lie_init_(self.A, partial(nn.init.normal_, std=1))
+        UnitaryLieAlgebra.unitary_lie_init_(self.A, partial(nn.init.normal_, std=1))
 
     def M_initialize(self, A):
         init_range = np.linspace(0, 10, self.channels + 1)
         for i in range(self.channels):
-            A[:, i] = Unitary.unitary_lie_init_(
+            A[:, i] = UnitaryLieAlgebra.unitary_lie_init_(
                 A[:, i], partial(nn.init.uniform_, a=init_range[i], b=init_range[i + 1])
             )
         return A
