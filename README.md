@@ -14,6 +14,7 @@ Then, it is important to run the following commands to install the other depende
 ```bash
 pip install cupy==13.2.0
 pip install git+https://github.com/tgcsaba/ksig.git --no-deps
+pip install torch==1.11.0+cu113 -f https://download.pytorch.org/whl/cu113/torch_stable.html
 ```
 There is a dependency at the moment on `cupy`, which requires a `CUDA` installation/VS build tools. You will get errors when running the code without it.
 
