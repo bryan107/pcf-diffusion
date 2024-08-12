@@ -9,6 +9,7 @@ from pytorch_lightning import seed_everything, Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
 from src.logger.init_logger import set_config_logging
+from src.networks.lstmgenerator_diffusion import LSTMGenerator_Diffusion
 from src.trainers.diffpcfgan_trainer import DiffPCFGANTrainer
 
 set_config_logging()
@@ -16,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 
 from config import ROOT_DIR
-from src.networks.lstmgenerator import LSTMGenerator
 from src.utils.progressbarwithoutvalbatchupdate import ProgressbarWithoutValBatchUpdate
 from src.utils.traininghistorylogger import TrainingHistoryLogger
 from src.utils.utils_os import factory_fct_linked_path
@@ -107,10 +107,10 @@ trainer = Trainer(
 )
 
 logger.info("Creating the model.")
-lstm_generator = LSTMGenerator(
+lstm_generator = LSTMGenerator_Diffusion(
     input_dim=config.input_dim,
-    hidden_dim=8,
     output_dim=config.input_dim - 1,
+    hidden_dim=8,
     n_layers=1,
     noise_scale=1.0,
     BM=True,

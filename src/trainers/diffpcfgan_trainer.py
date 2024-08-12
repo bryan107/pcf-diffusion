@@ -5,7 +5,7 @@ import torch.nn as nn
 from PIL import ImageFile
 
 from src.PCF_with_empirical_measure import PCF_with_empirical_measure
-from src.utils.utils import cat_linspace_times
+from src.utils.utils import cat_linspace_times, cat_linspace_times_4D
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
@@ -14,6 +14,8 @@ from src.trainers.trainer import Trainer
 
 # TODO 12/08/2024 nie_k: Add a way to add a zero at the beginning of a sequence without having to sample it for Swissroll.
 # TODO 12/08/2024 nie_k: Alternative plot for swiss roll.
+
+PERIOD_PLOT_VAL = 5
 
 
 class DiffPCFGANTrainer(Trainer):
@@ -73,38 +75,45 @@ class DiffPCFGANTrainer(Trainer):
         num_seq: int,
         seq_len: int,
         dim_seq: int,
-        noise_seqs_z: typing.Optional[torch.Tensor] = None,
+        noise_start_seq_z: typing.Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        # WIP: explain what noise_seqs_z we need
-        if noise_seqs_z is None:
-            noise_seqs_z = self._get_noise_vector((num_seq, seq_len, dim_seq))
+        # WIP: explain what noise_start_seq_z we need
+        if noise_start_seq_z is None:
+            noise_start_seq_z = self._get_noise_vector((num_seq, seq_len, dim_seq))
         else:
-            assert noise_seqs_z.shape == (
+            assert noise_start_seq_z.shape == (
                 num_seq,
                 seq_len,
                 dim_seq,
-            ), f"Expected noise_seqs_z to have shape (num_seq, seq_len, D) but got {noise_seqs_z.shape}"
+            ), f"Expected noise_start_seq_z to have shape (num_seq, seq_len, D) but got {noise_start_seq_z.shape}"
 
         # Returns a tensor with shape (num_seq, seq_len, generator.outputdim)
-        return self.generator(num_seq, seq_len, self.device, noise_seqs_z)
+        return self.generator(
+            num_seq,
+            seq_len,
+            dim_seq,
+            self.num_diffusion_steps,
+            self.device,
+            noise_start_seq_z,
+            self.alphas,
+            self.betas,
+            self.baralphas,
+        )
 
     def augmented_forward(
         self,
         num_seq: int,
         seq_len: int,
-        noise_seqs_z: typing.Optional[torch.Tensor] = None,
+        noise_start_seq_z: typing.Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        # Get the starting data: training you start from real data, otherwise sample noise.
-        # Use the network for denoising the number of steps. So you need to specify how many steps and you start from full noise.
-        # Can we use any network? Generator here useless right?
-        # The output is your prediction.
+        # The output is the whole diffusion path of shape (S,N,L,D)
         out = self(
             num_seq=num_seq,
             seq_len=seq_len,
             dim_seq=self.config.input_dim,
-            noise_seqs_z=noise_seqs_z,
+            noise_start_seq_z=noise_start_seq_z,
         )
-        out = cat_linspace_times(out)
+        out = cat_linspace_times_4D(out)
         return out
 
     def configure_optimizers(self):
@@ -144,13 +153,15 @@ class DiffPCFGANTrainer(Trainer):
         diffused_targets: torch.Tensor = self._construct_diffusing_process(
             targets, self._linspace_diffusion_steps
         )
-        fake_samples = self.augmented_forward(
+        denoised_trajectory_targets = self.augmented_forward(
             num_seq=targets.shape[0],
-            seq_len=targets.shape[1],
-            noise_seqs_z=diffused_targets[-1, :, :, :],
+            seq_len=targets.shape[0],
+            noise_start_seq_z=diffused_targets[-1, :, :, :],
         )
         loss_gen = self.discriminator.distance_measure(
-            targets, fake_samples, Lambda=0.1
+            diffused_targets.transpose(0, 1).flatten(2, 3),
+            denoised_trajectory_targets.transpose(0, 1).flatten(2, 3),
+            Lambda=0.1,
         )
 
         self.log(
@@ -162,12 +173,12 @@ class DiffPCFGANTrainer(Trainer):
         )
 
         # TODO 11/08/2024 nie_k: A bit of a hack, I usually code this better but will do the trick for now.
-        if not (self.current_epoch + 1) % 50:
+        if not (self.current_epoch + 1) % PERIOD_PLOT_VAL:
             path = (
                 self.output_dir_images
                 + f"pred_vs_true_epoch_{str(self.current_epoch + 1)}"
             )
-            self.evaluate(fake_samples, targets, path)
+            self.evaluate(denoised_trajectory_targets[0], targets, path)
         return
 
     def _training_step_gen(self, optim_gen, targets: torch.Tensor) -> float:
@@ -177,13 +188,16 @@ class DiffPCFGANTrainer(Trainer):
             targets, self._linspace_diffusion_steps
         )
 
-        fake_samples = self.augmented_forward(
+        denoised_trajectory_targets = self.augmented_forward(
             num_seq=targets.shape[0],
             seq_len=targets.shape[1],
-            noise_seqs_z=diffused_targets[-1, :, :, :],
+            noise_start_seq_z=diffused_targets[-1, :, :, :],
         )
         loss_gen = self.discriminator.distance_measure(
-            targets, fake_samples, Lambda=0.1
+            # WIP Explain
+            diffused_targets.transpose(0, 1).flatten(2, 3),
+            denoised_trajectory_targets.transpose(0, 1).flatten(2, 3),
+            Lambda=0.1,
         )
 
         self.manual_backward(loss_gen)
@@ -198,13 +212,15 @@ class DiffPCFGANTrainer(Trainer):
         )
 
         with torch.no_grad():
-            fake_samples = self.augmented_forward(
+            denoised_trajectory_targets = self.augmented_forward(
                 num_seq=targets.shape[0],
                 seq_len=targets.shape[1],
-                noise_seqs_z=diffused_targets[-1, :, :, :],
+                noise_start_seq_z=diffused_targets[-1, :, :, :],
             )
         loss_disc = -self.discriminator.distance_measure(
-            targets, fake_samples, Lambda=0.1
+            diffused_targets.transpose(0, 1).flatten(2, 3),
+            denoised_trajectory_targets.transpose(0, 1).flatten(2, 3),
+            Lambda=0.1,
         )
         self.manual_backward(loss_disc)
         optim_discr.step()

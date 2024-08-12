@@ -72,7 +72,7 @@ class LSTMGenerator(nn.Module):
         batch_size: int,
         n_lags: int,
         device: str,
-        noise_seqs_z: torch.Tensor = None,
+        noise_start_seq_z: torch.Tensor = None,
     ) -> torch.Tensor:
         # noise_seqs_z is used as input to rnn. If not specified, we take a random noise.
         # Should be before cumsum if you set the parameter.
@@ -97,13 +97,13 @@ class LSTMGenerator(nn.Module):
             .contiguous()
         )
 
-        if noise_seqs_z == None:
-            noise_seqs_z = self.get_noise_vector(
+        if noise_start_seq_z == None:
+            noise_start_seq_z = self.get_noise_vector(
                 (batch_size, n_lags, self.input_dim), device
             )
         if self.apply_cumsum_on_noise:
-            noise_seqs_z = noise_seqs_z.cumsum(1)
+            noise_start_seq_z = noise_start_seq_z.cumsum(1)
 
-        hn, _ = self.rnn(noise_seqs_z, (h0, c0))
+        hn, _ = self.rnn(noise_start_seq_z, (h0, c0))
         output = self.linear(self.activation(hn))
         return output
