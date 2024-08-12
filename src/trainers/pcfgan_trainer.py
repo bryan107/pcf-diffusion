@@ -60,7 +60,7 @@ class PCFGANTrainer(Trainer):
         # We follow batch first convention. (N,L,D).
         return self.generator(num_seq, seq_len, self.device)
 
-    def sample(self, num_seq: int, seq_len: int) -> torch.Tensor:
+    def augmented_forward(self, num_seq: int, seq_len: int) -> torch.Tensor:
         out = self(
             num_seq=num_seq,
             seq_len=seq_len,
@@ -101,7 +101,7 @@ class PCFGANTrainer(Trainer):
 
     def validation_step(self, batch, batch_nb):
         (targets,) = batch
-        fake_samples = self.sample(
+        fake_samples = self.augmented_forward(
             num_seq=targets.shape[0],
             seq_len=targets.shape[1],
         )
@@ -120,8 +120,8 @@ class PCFGANTrainer(Trainer):
         # TODO 11/08/2024 nie_k: A bit of a hack, I usually code this better but will do the trick for now.
         if not (self.current_epoch + 1) % 50:
             path = (
-                    self.output_dir_images
-                    + f"pred_vs_true_epoch_{str(self.current_epoch + 1)}"
+                self.output_dir_images
+                + f"pred_vs_true_epoch_{str(self.current_epoch + 1)}"
             )
             self.evaluate(fake_samples, targets, path)
         return
@@ -129,7 +129,7 @@ class PCFGANTrainer(Trainer):
     def _training_step_gen(self, optim_gen, targets):
         optim_gen.zero_grad()
 
-        fake_samples = self.sample(
+        fake_samples = self.augmented_forward(
             num_seq=targets.shape[0],
             seq_len=targets.shape[1],
         )
@@ -145,7 +145,7 @@ class PCFGANTrainer(Trainer):
         optim_discr.zero_grad()
 
         with torch.no_grad():
-            fake_samples = self.sample(
+            fake_samples = self.augmented_forward(
                 num_seq=targets.shape[0],
                 seq_len=targets.shape[1],
             )

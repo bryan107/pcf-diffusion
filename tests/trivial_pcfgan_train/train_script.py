@@ -9,14 +9,14 @@ from pytorch_lightning import seed_everything, Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
 from src.logger.init_logger import set_config_logging
+from src.trainers.diffpcfgan_trainer import DiffPCFGANTrainer
 
 set_config_logging()
 logger = logging.getLogger(__name__)
 
 
 from config import ROOT_DIR
-from src.networks.generators import LSTMGenerator
-from src.trainers.pcfgan_trainer import PCFGANTrainer
+from src.networks.lstmgenerator import LSTMGenerator
 from src.utils.progressbarwithoutvalbatchupdate import ProgressbarWithoutValBatchUpdate
 from src.utils.traininghistorylogger import TrainingHistoryLogger
 from src.utils.utils_os import factory_fct_linked_path
@@ -67,7 +67,7 @@ config = {
 }
 config = Config(config)
 
-period_log: int = 5
+period_log: int = 1
 early_stop_val_loss = EarlyStopping(
     monitor="train_pcfd",
     min_delta=1e-4,
@@ -116,18 +116,22 @@ lstm_generator = LSTMGenerator(
     BM=True,
     activation=nn.Identity(),
 )
-model = PCFGANTrainer(
-    generator=lstm_generator,
-    config=config,
-    learning_rate_gen=config.lr_G,
-    learning_rate_disc=config.lr_D,
-    num_D_steps_per_G_step=config.D_steps_per_G_step,
-    num_samples_pcf=config.M_num_samples,
-    hidden_dim_pcf=config.M_hidden_dim,
-    # wip: THESE TWO SEEM UNUSED??
-    test_metrics_train=None,
-    test_metrics_test=None,
-    # WIP I THINK BATCH SIZE DOES SMTHG DIFFERENT
+model = (
+    # PCFGANTrainer(
+    DiffPCFGANTrainer(
+        generator=lstm_generator,
+        config=config,
+        learning_rate_gen=config.lr_G,
+        learning_rate_disc=config.lr_D,
+        num_D_steps_per_G_step=config.D_steps_per_G_step,
+        num_samples_pcf=config.M_num_samples,
+        hidden_dim_pcf=config.M_hidden_dim,
+        num_diffusion_steps=3,
+        # wip: THESE TWO SEEM UNUSED??
+        test_metrics_train=None,
+        test_metrics_test=None,
+        # WIP I THINK BATCH SIZE DOES SMTHG DIFFERENT
+    )
 )
 logger.info("Model created.")
 

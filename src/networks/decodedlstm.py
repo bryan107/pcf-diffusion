@@ -56,6 +56,7 @@ class DecodedLSTM(nn.Module):
         self.activ_fn_2 = nn.Tanh()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # TODO 12/08/2024 nie_k:  missing hidden states in that lstm
         x = self.activ_fn_1(self.linear1(x))
 
         if self.return_seq:
