@@ -6,19 +6,31 @@ from src.utils.fasttensordataloader import FastTensorDataLoader
 
 
 class SwissRoll_Dataset(LightningDataModule):
-    def __init__(self, data_size: int):
+    def __init__(self, data_size: int, use_2D_otherwise_3D: bool = True):
         super().__init__()
 
+        self.use_2D_otherwise_3D = use_2D_otherwise_3D
+
         data, _ = make_swiss_roll(n_samples=data_size, noise=0.5)
-        data = data[:, [0, 2]]
+        data = (data - data.mean()) / data.std()
+
+        if use_2D_otherwise_3D:
+            # If 2D, select only the first and third columns (x and z axes).
+            data = data[:, [0, 2]]
+            data_dim = 2
+        else:
+            # If 3D, use all three columns.
+            data_dim = 3
 
         # Initialize the dataset with zeros
-        train_data = torch.from_numpy(data).float().view(data_size, 1, 2)
+        train_data = torch.from_numpy(data).float().view(data_size, 1, data_dim)
 
         # Add zero beginning sequences.
-        train_data = torch.cat((torch.zeros((data_size, 1, 2)), train_data), dim=1)
+        train_data = torch.cat(
+            (torch.zeros((data_size, 1, data_dim)), train_data), dim=1
+        )
 
-        # Add time.
+        # Add time dimension.
         train_data = torch.cat(
             (train_data, torch.tensor([0, 1]).repeat(data_size, 1).unsqueeze(-1)), dim=2
         )
@@ -45,18 +57,46 @@ class SwissRoll_Dataset(LightningDataModule):
 
         print(self.inputs, "\n", self.inputs.shape)
 
-        plt.figure()
         train_data_np = self.train_in.numpy()
         val_data_np = self.val_in.numpy()
 
-        plt.scatter(
-            train_data_np[:, 1, 0], train_data_np[:, 1, 1], c="b", label="Train Data"
-        )
-        plt.scatter(
-            val_data_np[:, 1, 0], val_data_np[:, 1, 1], c="r", label="Validation Data"
-        )
+        plt.figure()
 
-        plt.title("Train and Validation Data")
+        if self.use_2D_otherwise_3D:
+            # Plot for 2D data
+            plt.scatter(
+                train_data_np[:, 1, 0],
+                train_data_np[:, 1, 1],
+                c="b",
+                label="Train Data",
+            )
+            plt.scatter(
+                val_data_np[:, 1, 0],
+                val_data_np[:, 1, 1],
+                c="r",
+                label="Validation Data",
+            )
+            plt.title("Train and Validation Data (2D)")
+        else:
+
+            # Plot for 3D data
+            ax = plt.axes(projection="3d")
+            ax.scatter(
+                train_data_np[:, 1, 0],
+                train_data_np[:, 1, 1],
+                train_data_np[:, 1, 2],
+                c="b",
+                label="Train Data",
+            )
+            ax.scatter(
+                val_data_np[:, 1, 0],
+                val_data_np[:, 1, 1],
+                val_data_np[:, 1, 2],
+                c="r",
+                label="Validation Data",
+            )
+            ax.set_title("Train and Validation Data (3D)")
+
         plt.legend()
         plt.show()
         return
@@ -68,6 +108,6 @@ if __name__ == "__main__":
 
     sns.set()
 
-    mid_price_data_module = SwissRoll_Dataset(1000)
+    mid_price_data_module = SwissRoll_Dataset(1000, use_2D_otherwise_3D=False)
     mid_price_data_module.plot_data()
     plt.show()
