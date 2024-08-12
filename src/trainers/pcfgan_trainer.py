@@ -12,6 +12,8 @@ from src.trainers.trainer import Trainer
 # TODO 12/08/2024 nie_k: Add a way to add a zero at the beginning of a sequence without having to sample it for Swissroll.
 # TODO 12/08/2024 nie_k: Alternative plot for swiss roll.
 
+PERIOD_PLOT_VAL = 25
+
 
 class PCFGANTrainer(Trainer):
     def __init__(
@@ -118,7 +120,7 @@ class PCFGANTrainer(Trainer):
         )
 
         # TODO 11/08/2024 nie_k: A bit of a hack, I usually code this better but will do the trick for now.
-        if not (self.current_epoch + 1) % 50:
+        if not (self.current_epoch + 1) % PERIOD_PLOT_VAL:
             path = (
                 self.output_dir_images
                 + f"pred_vs_true_epoch_{str(self.current_epoch + 1)}"
