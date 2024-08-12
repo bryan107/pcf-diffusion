@@ -126,7 +126,7 @@ class PCFGANTrainer(Trainer):
             self.evaluate(fake_samples, targets, path)
         return
 
-    def _training_step_gen(self, optim_gen, targets):
+    def _training_step_gen(self, optim_gen, targets: torch.Tensor) -> float:
         optim_gen.zero_grad()
 
         fake_samples = self.augmented_forward(
@@ -141,7 +141,7 @@ class PCFGANTrainer(Trainer):
         optim_gen.step()
         return loss_gen.item()
 
-    def _training_step_disc(self, optim_discr, targets):
+    def _training_step_disc(self, optim_discr, targets: torch.Tensor) -> float:
         optim_discr.zero_grad()
 
         with torch.no_grad():

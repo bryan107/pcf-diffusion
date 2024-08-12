@@ -108,9 +108,9 @@ trainer = Trainer(
 
 logger.info("Creating the model.")
 lstm_generator = LSTMGenerator(
-    input_dim=2,
+    input_dim=config.input_dim,
     hidden_dim=8,
-    output_dim=1,
+    output_dim=config.input_dim - 1,
     n_layers=1,
     noise_scale=1.0,
     BM=True,

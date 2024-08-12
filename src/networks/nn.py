@@ -1,6 +1,9 @@
 import torch
 
 
+# TODO 12/08/2024 nie_k: This file needs to be renamed
+
+
 def matrix_power_two_batch(A, k):
     """
     Computes the matrix power of A for each element in k using batch processing.
