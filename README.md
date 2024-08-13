@@ -36,3 +36,6 @@ I will fix that as soon as I can! So we do not rely on `corai` and struggle doin
 # How to run
 
 Go to `tests/<name_exp>/train_script.py`. This should be runnable in the usual manner, without command line arguments.
+
+# Loggers
+Change last line in `src/logger/config_logging.json`: `"level": "INFO"` to get more logs.
