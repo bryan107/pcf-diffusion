@@ -29,7 +29,7 @@ path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/trivial_pcfgan_train
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
 filename_model_saved = "pcfgan_1"
 
-data = TrivialBM_Dataset(1_000)
+data = TrivialBM_Dataset(5_00)
 
 
 class Config:
@@ -43,16 +43,16 @@ class Config:
 config = {
     "device": "cuda",
     "add_time": False,
-    "lr_G": 0.01,
-    "lr_D": 0.01,
+    "lr_G": 0.001,
+    "lr_D": 0.001,
     "D_steps_per_G_step": 2,
     # NUM EPOCHS
     "num_epochs": 501,
     "G_input_dim": 2,
     "G_hidden_dim": 8,
     "input_dim": 2,
-    "M_num_samples": 6,
-    "M_hidden_dim": 10,
+    "M_num_samples": 4,
+    "M_hidden_dim": 12,
     "lr_M": 0.005,
     "Lambda1": 50,
     "Lambda2": 1,
@@ -111,7 +111,7 @@ lstm_generator = LSTMGenerator_Diffusion(
     ###Be careful, because of the operations we do, this is actually, a function. See how to do it better.
     output_dim=(config.input_dim - 1),
     seq_len=config.n_lags,
-    hidden_dim=8,
+    hidden_dim=64,
     n_layers=1,
     noise_scale=1.0,
     BM=True,
@@ -127,7 +127,7 @@ model = (
         num_D_steps_per_G_step=config.D_steps_per_G_step,
         num_samples_pcf=config.M_num_samples,
         hidden_dim_pcf=config.M_hidden_dim,
-        num_diffusion_steps=64,
+        num_diffusion_steps=32,
         # wip: THESE TWO SEEM UNUSED??
         test_metrics_train=None,
         test_metrics_test=None,

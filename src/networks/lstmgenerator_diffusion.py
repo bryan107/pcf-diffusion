@@ -136,14 +136,10 @@ class LSTMGenerator_Diffusion(nn.Module):
 
         # Slicing to remove the time dimension of the input, which we do not need because it is deterministic.
         noise_start_seq_z = noise_start_seq_z[:, :, :-1]
-        # WIP: I believe this is useless
-        # if self.apply_cumsum_on_noise:
-        #    noise_start_seq_z = noise_start_seq_z.cumsum(1)
-        # WIP
 
         # Start of for loop.
         outputs = torch.zeros(
-            num_diffusion_steps + 1, batch_size, seq_len, self.output_dim, device=device
+            num_diffusion_steps, batch_size, seq_len, self.output_dim, device=device
         )
         outputs[0] = noise_start_seq_z
         # TODO:: i am confused! `i` goes from 1 to num_diffusion_steps-1, so there is a missing step???
@@ -152,16 +148,14 @@ class LSTMGenerator_Diffusion(nn.Module):
             outputs_hidden, (hn, cn) = self.rnn(
                 outputs[i - 1].flatten(1, 2).unsqueeze(1), (hn, cn)
             )
-            logger.debug("Outputs from RNN: %s", outputs_hidden)
 
             # Use proper NN, the class already exists it is called basic_nn
             decoded = self.linear(self.activation(outputs_hidden))
-
-            logger.debug("Outputs from linear layer: %s", decoded)
             decoded = decoded.view(batch_size, seq_len, -1)
 
             # todo: verify that the index for alphas are correct. I m confused atm.
             # TODO:: i am confused! `i` goes from 1 to num_diffusion_steps-1, so there is a missing step???
+            #  Due to last time not present? ommited for stability?
             decoded = (
                 1.0
                 / torch.pow(alphas[num_diffusion_steps - i], 0.5)
@@ -172,17 +166,23 @@ class LSTMGenerator_Diffusion(nn.Module):
                     * decoded
                 )
             )
-            logger.debug("Transformation from paper: %s", decoded)
 
-            assert not (torch.isnan(decoded).any() or torch.isinf(decoded).any())
+            assert not (torch.isnan(decoded).any() or torch.isinf(decoded).any()), (
+                "decoded has nan or inf values",
+                decoded.flatten(),
+            )
 
-            if i + 1 != num_diffusion_steps:
+            if i + 1 < num_diffusion_steps:
                 decoded = decoded + torch.pow(
-                    betas[num_diffusion_steps + 1 - i], 0.5
-                ) * torch.randn(batch_size, seq_len, self.output_dim, device=device)
+                    betas[num_diffusion_steps - i], 0.5
+                ) * torch.randn(batch_size, 1, 1, device=device)
 
             # Required for backpropagation tracking.
             outputs: torch.Tensor = outputs.clone()
             outputs[i] = decoded
+        logger.debug(
+            "Sequence of denoised targets transposed and sliced: %s",
+            outputs.transpose(0, 1)[:, :, :, 0],
+        )
         # TODO 12/08/2024 nie_k: verify how to do it without flip.
         return outputs.flip(0)

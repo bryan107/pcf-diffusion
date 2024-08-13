@@ -1,13 +1,8 @@
 import torch
-from PIL import ImageFile
 
 from src.PCF_with_empirical_measure import PCF_with_empirical_measure
-from src.utils.utils import cat_linspace_times
-
-ImageFile.LOAD_TRUNCATED_IMAGES = True
-
 from src.trainers.trainer import Trainer
-
+from src.utils.utils import cat_linspace_times
 
 # TODO 12/08/2024 nie_k: Add a way to add a zero at the beginning of a sequence without having to sample it for Swissroll.
 # TODO 12/08/2024 nie_k: Alternative plot for swiss roll.

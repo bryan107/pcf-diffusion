@@ -1,5 +1,10 @@
+import logging
+
 import torch
 from pytorch_lightning import LightningDataModule
+
+logger = logging.getLogger(__name__)
+
 
 from src.utils.fasttensordataloader import FastTensorDataLoader
 

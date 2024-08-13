@@ -41,7 +41,7 @@ plt.pause(0.5)
 def noise(Xbatch, t):
     eps = torch.randn(size=Xbatch.shape)
     noised = (baralphas[t] ** 0.5).repeat(1, Xbatch.shape[1]) * Xbatch + (
-            (1 - baralphas[t]) ** 0.5
+        (1 - baralphas[t]) ** 0.5
     ).repeat(1, Xbatch.shape[1]) * eps
     return noised, eps
 
@@ -102,10 +102,10 @@ scheduler = optim.lr_scheduler.LinearLR(
     optimizer, start_factor=1.0, end_factor=0.01, total_iters=nepochs
 )
 
-for epoch in range(nepochs):
+for epoch in range(1):
     epoch_loss = steps = 0
     for i in range(0, len(X), batch_size):
-        Xbatch = X[i: i + batch_size]
+        Xbatch = X[i : i + batch_size]
         timesteps = torch.randint(0, diffusion_steps, size=[len(Xbatch), 1])
         noised, eps = noise(Xbatch, timesteps)
         predicted_noise = model(noised.to(device), timesteps.to(device))
@@ -127,9 +127,9 @@ def sample_ddpm(model, nsamples, nfeatures):
             predicted_noise = model(x, torch.full([nsamples, 1], t).to(device))
             # See DDPM paper between equations 11 and 12
             x = (
-                    1
-                    / (alphas[t] ** 0.5)
-                    * (x - (1 - alphas[t]) / ((1 - baralphas[t]) ** 0.5) * predicted_noise)
+                1
+                / (alphas[t] ** 0.5)
+                * (x - (1 - alphas[t]) / ((1 - baralphas[t]) ** 0.5) * predicted_noise)
             )
             if t > 1:
                 # See DDPM paper section 3.2.

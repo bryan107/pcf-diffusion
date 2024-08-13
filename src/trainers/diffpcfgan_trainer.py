@@ -1,16 +1,14 @@
+import logging
 import typing
 
 import torch
 import torch.nn as nn
-from PIL import ImageFile
 
 from src.PCF_with_empirical_measure import PCF_with_empirical_measure
+from src.trainers.trainer import Trainer
 from src.utils.utils import cat_linspace_times_4D
 
-ImageFile.LOAD_TRUNCATED_IMAGES = True
-
-from src.trainers.trainer import Trainer
-
+logger = logging.getLogger(__name__)
 
 # TODO 12/08/2024 nie_k: Add a way to add a zero at the beginning of a sequence without having to sample it for Swissroll.
 # TODO 12/08/2024 nie_k: Alternative plot for swiss roll.
@@ -166,9 +164,10 @@ class DiffPCFGANTrainer(Trainer):
         )
         # TODO:: i am confused! `i` goes from 1 to num_diffusion_steps-1, so there is a missing step???
         loss_gen = self.discriminator.distance_measure(
+            # WIP: Hardcoded lengths of diffusion sequence to consider.
             # Slice to keep only 20 steps, because anyway the PCF can't capture long time sequences.
-            diffused_targets[1:10].transpose(0, 1).flatten(2, 3),
-            denoised_trajectory_targets[1:10].transpose(0, 1).flatten(2, 3),
+            diffused_targets[1:17].transpose(0, 1).flatten(2, 3),
+            denoised_trajectory_targets[:16].transpose(0, 1).flatten(2, 3),
             Lambda=0.1,
         )
 
@@ -203,9 +202,9 @@ class DiffPCFGANTrainer(Trainer):
         )
         # TODO:: i am confused! `i` goes from 1 to num_diffusion_steps-1, so there is a missing step???
         loss_gen = self.discriminator.distance_measure(
-            # WIP Explain
-            diffused_targets[1:].transpose(0, 1).flatten(2, 3),
-            denoised_trajectory_targets[1:].transpose(0, 1).flatten(2, 3),
+            # WIP: Hardcoded lengths of diffusion sequence to consider.
+            diffused_targets[1:17].transpose(0, 1).flatten(2, 3),
+            denoised_trajectory_targets[:16].transpose(0, 1).flatten(2, 3),
             Lambda=0.1,
         )
 
@@ -226,10 +225,11 @@ class DiffPCFGANTrainer(Trainer):
                 seq_len=targets.shape[1],
                 noise_start_seq_z=diffused_targets[-1, :, :, :],
             )
-        # TODO:: i am confused! `i` goes from 1 to num_diffusion_steps-1, so there is a missing step???
+
+        # WIP: Hardcoded lengths of diffusion sequence to consider.
         loss_disc = -self.discriminator.distance_measure(
-            diffused_targets[1:].transpose(0, 1).flatten(2, 3),
-            denoised_trajectory_targets[1:].transpose(0, 1).flatten(2, 3),
+            diffused_targets[1:17].transpose(0, 1).flatten(2, 3),
+            denoised_trajectory_targets[:16].transpose(0, 1).flatten(2, 3),
             Lambda=0.1,
         )
         self.manual_backward(loss_disc)
@@ -238,7 +238,11 @@ class DiffPCFGANTrainer(Trainer):
         return loss_disc.item()
 
     def _construct_diffusing_process(
-        self, starting_data: torch.Tensor, timestep_diffusion: torch.Tensor
+        self,
+        starting_data: torch.Tensor,
+        timestep_diffusion: torch.Tensor,
+        # Ignore features to be diffused with a hack here.
+        indices_features_not_diffuse=[1],
     ) -> torch.Tensor:
         # timestep_diffusion should have values between 0 and diffusion_steps -1, and where 0 corresponds to the initial data.
         # To get the totally noised data, use: output[-1, :, :, :]
@@ -263,7 +267,7 @@ class DiffPCFGANTrainer(Trainer):
         )
         # For each sequence in L, we compute a final diffused noise value of shape (N,D).
         final_noise_per_sequence = self._get_noise_vector(
-            (starting_data.shape[0], 1, starting_data.shape[2])
+            (starting_data.shape[0], 1, 1)
         )
 
         # View the data in the format (S,N,L,D) by repeating the data S times.
@@ -277,9 +281,18 @@ class DiffPCFGANTrainer(Trainer):
         portion_white_noise = torch.pow(
             1 - self.baralphas[timestep_diffusion], 0.5
         ).view(self.num_diffusion_steps + 1, 1, 1, 1)
-        progressively_noisy_data = (
-            portion_original_data * starting_data
+
+        progressively_noisy_data: torch.Tensor = starting_data.clone()
+
+        mask_where_diffuse = torch.ones(starting_data.shape[-1], dtype=torch.bool)
+        mask_where_diffuse[indices_features_not_diffuse] = False
+        progressively_noisy_data[:, :, :, mask_where_diffuse] = (
+            portion_original_data * starting_data[:, :, :, mask_where_diffuse]
             + portion_white_noise * final_noise_per_sequence
+        )
+        logger.debug(
+            "Diffused data transposed and sliced: %s",
+            progressively_noisy_data.transpose(0, 1)[:, :, :, 0],
         )
         # Shape (S, N, L, D). This shape makes sense because we are interested in the tensor N,L,D by slices over S-dim.
         return progressively_noisy_data
