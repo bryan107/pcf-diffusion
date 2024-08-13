@@ -5,7 +5,7 @@ import torch.nn as nn
 from PIL import ImageFile
 
 from src.PCF_with_empirical_measure import PCF_with_empirical_measure
-from src.utils.utils import cat_linspace_times, cat_linspace_times_4D
+from src.utils.utils import cat_linspace_times_4D
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
@@ -55,7 +55,8 @@ class DiffPCFGANTrainer(Trainer):
         self.discriminator = PCF_with_empirical_measure(
             num_samples=self.num_samples_pcf,
             hidden_size=self.hidden_dim_pcf,
-            input_size=self.config.input_dim,
+            # TODO 13/08/2024 nie_k: instead of input_dim, set time_series_for_compar_dim
+            input_size=self.config.input_dim * self.config.n_lags,
         )
         self.D_steps_per_G_step = num_D_steps_per_G_step
 
@@ -85,7 +86,12 @@ class DiffPCFGANTrainer(Trainer):
                 num_seq,
                 seq_len,
                 dim_seq,
-            ), f"Expected noise_start_seq_z to have shape (num_seq, seq_len, D) but got {noise_start_seq_z.shape}"
+            ), (
+                f"Shape mismatch for noise_start_seq_z: "
+                f"Expected (num_seq={num_seq}, seq_len={seq_len}, dim_seq={dim_seq}) "
+                f"but got {noise_start_seq_z.shape} "
+                f"(actual shape). Ensure that the dimensions are correct."
+            )
 
         # Returns a tensor with shape (num_seq, seq_len, generator.outputdim)
         return self.generator(
@@ -155,12 +161,14 @@ class DiffPCFGANTrainer(Trainer):
         )
         denoised_trajectory_targets = self.augmented_forward(
             num_seq=targets.shape[0],
-            seq_len=targets.shape[0],
+            seq_len=targets.shape[1],
             noise_start_seq_z=diffused_targets[-1, :, :, :],
         )
+        # TODO:: i am confused! `i` goes from 1 to num_diffusion_steps-1, so there is a missing step???
         loss_gen = self.discriminator.distance_measure(
-            diffused_targets.transpose(0, 1).flatten(2, 3),
-            denoised_trajectory_targets.transpose(0, 1).flatten(2, 3),
+            # Slice to keep only 20 steps, because anyway the PCF can't capture long time sequences.
+            diffused_targets[1:10].transpose(0, 1).flatten(2, 3),
+            denoised_trajectory_targets[1:10].transpose(0, 1).flatten(2, 3),
             Lambda=0.1,
         )
 
@@ -193,10 +201,11 @@ class DiffPCFGANTrainer(Trainer):
             seq_len=targets.shape[1],
             noise_start_seq_z=diffused_targets[-1, :, :, :],
         )
+        # TODO:: i am confused! `i` goes from 1 to num_diffusion_steps-1, so there is a missing step???
         loss_gen = self.discriminator.distance_measure(
             # WIP Explain
-            diffused_targets.transpose(0, 1).flatten(2, 3),
-            denoised_trajectory_targets.transpose(0, 1).flatten(2, 3),
+            diffused_targets[1:].transpose(0, 1).flatten(2, 3),
+            denoised_trajectory_targets[1:].transpose(0, 1).flatten(2, 3),
             Lambda=0.1,
         )
 
@@ -217,9 +226,10 @@ class DiffPCFGANTrainer(Trainer):
                 seq_len=targets.shape[1],
                 noise_start_seq_z=diffused_targets[-1, :, :, :],
             )
+        # TODO:: i am confused! `i` goes from 1 to num_diffusion_steps-1, so there is a missing step???
         loss_disc = -self.discriminator.distance_measure(
-            diffused_targets.transpose(0, 1).flatten(2, 3),
-            denoised_trajectory_targets.transpose(0, 1).flatten(2, 3),
+            diffused_targets[1:].transpose(0, 1).flatten(2, 3),
+            denoised_trajectory_targets[1:].transpose(0, 1).flatten(2, 3),
             Lambda=0.1,
         )
         self.manual_backward(loss_disc)
@@ -233,17 +243,24 @@ class DiffPCFGANTrainer(Trainer):
         # timestep_diffusion should have values between 0 and diffusion_steps -1, and where 0 corresponds to the initial data.
         # To get the totally noised data, use: output[-1, :, :, :]
 
-        assert timestep_diffusion.dtype in [
+        expected_dtypes = [
             torch.long,
             torch.short,
             torch.bool,
             torch.int,
             torch.int8,
             torch.uint8,
-        ], f"timestep_diffusion must be a tensor of type long, byte, or bool but is of type {timestep_diffusion.dtype}"
-        assert (
-            len(starting_data.shape) == 3
-        ), f"Starting data should have shape (N,L,D) but got {starting_data.shape}"
+        ]
+        assert timestep_diffusion.dtype in expected_dtypes, (
+            f"Invalid dtype for timestep_diffusion: Expected one of {expected_dtypes} but got {timestep_diffusion.dtype}. "
+            f"Please ensure the tensor is of an appropriate type."
+        )
+        assert len(starting_data.shape) == 3, (
+            f"Incorrect shape for starting_data: "
+            f"Expected 3 dimensions (N, L, D) but got {len(starting_data.shape)} dimensions "
+            f"with shape {starting_data.shape}. "
+            f"Make sure the tensor is correctly reshaped or initialized."
+        )
         # For each sequence in L, we compute a final diffused noise value of shape (N,D).
         final_noise_per_sequence = self._get_noise_vector(
             (starting_data.shape[0], 1, starting_data.shape[2])

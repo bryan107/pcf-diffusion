@@ -1,3 +1,4 @@
+import logging
 from typing import Tuple
 
 import torch
@@ -5,6 +6,8 @@ import torch.nn as nn
 
 from src.networks.residualdeepnetwork import ResidualDeepNetwork
 from src.utils.utils import init_weights
+
+logger = logging.getLogger(__name__)
 
 
 ######################################################################################################
@@ -19,32 +22,37 @@ from src.utils.utils import init_weights
 ### Task: rewrite this class with a free lstm. I have the class for it: Lstm_with_access_h0.
 class LSTMGenerator_Diffusion(nn.Module):
     def __init__(
-            self,
-            input_dim: int,
-            output_dim: int,
-            hidden_dim: int,
-            n_layers: int,
-            noise_scale=0.1,
-            BM=False,
-            activation=nn.Tanh(),
+        self,
+        input_dim: int,
+        output_dim: int,
+        seq_len: int,
+        hidden_dim: int,
+        n_layers: int,
+        noise_scale=0.1,
+        BM=False,
+        activation=nn.Tanh(),
     ):
         super().__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
+        self.seq_len = seq_len
+
         self.rnn_hidden_dim = hidden_dim
         self.rnn_num_layers = n_layers
 
         self.rnn = nn.LSTM(
-            input_size=input_dim,
+            input_size=self.input_dim,
             hidden_size=self.rnn_hidden_dim,
             num_layers=self.rnn_num_layers,
             batch_first=True,
         )
-        self.linear = nn.Linear(self.rnn_hidden_dim, output_dim, bias=False)
+        self.linear = nn.Linear(
+            self.rnn_hidden_dim, self.output_dim * self.seq_len, bias=False
+        )
 
         self.initial_nn = nn.Sequential(
             ResidualDeepNetwork(
-                input_dim,
+                self.input_dim,
                 self.rnn_hidden_dim * self.rnn_num_layers,
                 [self.rnn_hidden_dim, self.rnn_hidden_dim],
             ),
@@ -52,7 +60,7 @@ class LSTMGenerator_Diffusion(nn.Module):
         )
         self.initial_nn1 = nn.Sequential(
             ResidualDeepNetwork(
-                input_dim,
+                self.input_dim,
                 self.rnn_hidden_dim * self.rnn_num_layers,
                 [self.rnn_hidden_dim, self.rnn_hidden_dim],
             ),
@@ -76,16 +84,16 @@ class LSTMGenerator_Diffusion(nn.Module):
 
     # todo: it is so weird to me we pass device, remove it. Cahnge n_lags name as well, i dont like it.
     def forward(
-            self,
-            batch_size: int,
-            seq_len: int,
-            dim_seq: int,
-            num_diffusion_steps: int,
-            device: str,
-            noise_start_seq_z: torch.Tensor = None,
-            alphas: torch.Tensor = None,
-            betas: torch.Tensor = None,
-            baralphas: torch.Tensor = None,
+        self,
+        batch_size: int,
+        seq_len: int,
+        dim_seq: int,
+        num_diffusion_steps: int,
+        device: str,
+        noise_start_seq_z: torch.Tensor = None,
+        alphas: torch.Tensor = None,
+        betas: torch.Tensor = None,
+        baralphas: torch.Tensor = None,
     ) -> torch.Tensor:
         # noise_seqs_z is used as input to rnn. If not specified, we take a random noise.
         # Should be before cumsum if you set the parameter.
@@ -98,7 +106,7 @@ class LSTMGenerator_Diffusion(nn.Module):
         ), f"Expected shape (N, L, D), but got {noise_start_seq_z.shape}"
 
         assert (
-                dim_seq == self.input_dim
+            dim_seq == self.input_dim
         ), f"Expected input dim_seq with value {dim_seq} to be equal to {self.input_dim}"
 
         noise_initial_hidden_states = self.get_noise_vector(
@@ -135,32 +143,46 @@ class LSTMGenerator_Diffusion(nn.Module):
 
         # Start of for loop.
         outputs = torch.zeros(
-            num_diffusion_steps, batch_size, seq_len, self.output_dim, device=device
+            num_diffusion_steps + 1, batch_size, seq_len, self.output_dim, device=device
         )
         outputs[0] = noise_start_seq_z
-        for i in range(1, seq_len):
+        # TODO:: i am confused! `i` goes from 1 to num_diffusion_steps-1, so there is a missing step???
+        for i in range(1, num_diffusion_steps):
             # Flatten L and D dimensions into one
             outputs_hidden, (hn, cn) = self.rnn(
                 outputs[i - 1].flatten(1, 2).unsqueeze(1), (hn, cn)
             )
+            logger.debug("Outputs from RNN: %s", outputs_hidden)
+
             # Use proper NN, the class already exists it is called basic_nn
             decoded = self.linear(self.activation(outputs_hidden))
 
+            logger.debug("Outputs from linear layer: %s", decoded)
+            decoded = decoded.view(batch_size, seq_len, -1)
+
             # todo: verify that the index for alphas are correct. I m confused atm.
+            # TODO:: i am confused! `i` goes from 1 to num_diffusion_steps-1, so there is a missing step???
             decoded = (
-                    1.0
-                    / torch.pow(alphas[seq_len - i], 0.5)
-                    * (
-                            outputs[i - 1]
-                            - (1.0 - alphas[seq_len - i])
-                            / torch.pow(1.0 - baralphas[seq_len - i], 0.5)
-                            * decoded
-                    )
-            )
-            if i + 1 != seq_len:
-                decoded = decoded + torch.pow(betas[seq_len - i], 0.5) * torch.randn(
-                    batch_size, seq_len, self.output_dim, device=device
+                1.0
+                / torch.pow(alphas[num_diffusion_steps - i], 0.5)
+                * (
+                    outputs[i - 1]
+                    - (1.0 - alphas[num_diffusion_steps - i])
+                    / torch.pow(1.0 - baralphas[num_diffusion_steps - i], 0.5)
+                    * decoded
                 )
+            )
+            logger.debug("Transformation from paper: %s", decoded)
+
+            assert not (torch.isnan(decoded).any() or torch.isinf(decoded).any())
+
+            if i + 1 != num_diffusion_steps:
+                decoded = decoded + torch.pow(
+                    betas[num_diffusion_steps + 1 - i], 0.5
+                ) * torch.randn(batch_size, seq_len, self.output_dim, device=device)
+
+            # Required for backpropagation tracking.
+            outputs: torch.Tensor = outputs.clone()
             outputs[i] = decoded
         # TODO 12/08/2024 nie_k: verify how to do it without flip.
         return outputs.flip(0)

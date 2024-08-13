@@ -29,7 +29,6 @@ class PCF_with_empirical_measure(nn.Module):
         self.num_samples = num_samples
         self.hidden_size = hidden_size
         self.input_size = input_size
-        self.input_size = input_size
         self.unitary_development = UnitaryDevelopmentLayer(
             input_size=self.input_size,
             hidden_size=self.hidden_size,
@@ -94,21 +93,20 @@ class PCF_with_empirical_measure(nn.Module):
         Returns:
             torch.float: Distance measure between two batches of samples.
         """
-
-        ########## DEPRECATED
-        # print(X1.shape)
-        # if self.add_time:
-        #     X1 = AddTime(X1)
-        #     X2 = AddTime(X2)
-        # else:
-        #     pass
-        # print(X1.shape)
-        #########################
-        dev1, dev2 = self.unitary_development(X1), self.unitary_development(X2)
         N, T, d = X1.shape
 
-        # initial_dev = self.unitary_development_initial()
-        CF1, CF2 = dev1.mean(0), dev2.mean(0)
+        assert (
+            X1.shape == X2.shape
+        ), f"X1 and X2 must have the same shape but got {X1.shape} and {X2.shape}"
+        assert (
+            X1.shape[-1] == self.input_size
+        ), f"X1 must have last dimension size {self.input_size} but got {X1.shape[-1]}"
+
+        mean_unitary_development_X_1 = self.unitary_development(X1).mean(0)
+        mean_unitary_development_X_2 = self.unitary_development(X2).mean(0)
+        diff_characteristic_function = (
+            mean_unitary_development_X_1 - mean_unitary_development_X_2
+        )
 
         if Lambda != 0:
             initial_incre_X1 = torch.cat(
@@ -119,8 +117,12 @@ class PCF_with_empirical_measure(nn.Module):
             )
             initial_CF_1 = self.unitary_development(initial_incre_X1).mean(0)
             initial_CF_2 = self.unitary_development(initial_incre_X2).mean(0)
-            return self.HS_norm(CF1 - CF2, CF1 - CF2) + Lambda * self.HS_norm(
+            return self.HS_norm(
+                diff_characteristic_function, diff_characteristic_function
+            ) + Lambda * self.HS_norm(
                 initial_CF_1 - initial_CF_2, initial_CF_1 - initial_CF_2
             )
         else:
-            return self.HS_norm(CF1 - CF2, CF1 - CF2)
+            return self.HS_norm(
+                diff_characteristic_function, diff_characteristic_function
+            )

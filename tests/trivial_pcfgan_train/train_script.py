@@ -9,14 +9,13 @@ from pytorch_lightning import seed_everything, Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
 from src.logger.init_logger import set_config_logging
-from src.networks.lstmgenerator_diffusion import LSTMGenerator_Diffusion
-from src.trainers.diffpcfgan_trainer import DiffPCFGANTrainer
 
 set_config_logging()
 logger = logging.getLogger(__name__)
 
-
 from config import ROOT_DIR
+from src.networks.lstmgenerator_diffusion import LSTMGenerator_Diffusion
+from src.trainers.diffpcfgan_trainer import DiffPCFGANTrainer
 from src.utils.progressbarwithoutvalbatchupdate import ProgressbarWithoutValBatchUpdate
 from src.utils.traininghistorylogger import TrainingHistoryLogger
 from src.utils.utils_os import factory_fct_linked_path
@@ -109,7 +108,9 @@ trainer = Trainer(
 logger.info("Creating the model.")
 lstm_generator = LSTMGenerator_Diffusion(
     input_dim=config.input_dim,
-    output_dim=config.input_dim - 1,
+    ###Be careful, because of the operations we do, this is actually, a function. See how to do it better.
+    output_dim=(config.input_dim - 1),
+    seq_len=config.n_lags,
     hidden_dim=8,
     n_layers=1,
     noise_scale=1.0,
@@ -126,7 +127,7 @@ model = (
         num_D_steps_per_G_step=config.D_steps_per_G_step,
         num_samples_pcf=config.M_num_samples,
         hidden_dim_pcf=config.M_hidden_dim,
-        num_diffusion_steps=3,
+        num_diffusion_steps=64,
         # wip: THESE TWO SEEM UNUSED??
         test_metrics_train=None,
         test_metrics_test=None,
