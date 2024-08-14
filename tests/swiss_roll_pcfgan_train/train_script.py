@@ -15,12 +15,11 @@ set_config_logging()
 logger = logging.getLogger(__name__)
 
 from config import ROOT_DIR
-from src.networks.lstmgenerator import LSTMGenerator
-from src.trainers.pcfgan_trainer import PCFGANTrainer
+from src.networks.lstmgenerator_diffusion import LSTMGenerator_Diffusion
+from src.trainers.diffpcfgan_trainer import DiffPCFGANTrainer
 from src.utils.progressbarwithoutvalbatchupdate import ProgressbarWithoutValBatchUpdate
 from src.utils.traininghistorylogger import TrainingHistoryLogger
 from src.utils.utils_os import factory_fct_linked_path
-from tests.trivial_pcfgan_train.trivialbm_dataset import TrivialBM_Dataset
 
 sns.set()
 seed_everything(142, workers=True)
@@ -50,10 +49,10 @@ config = {
     # NUM EPOCHS
     "num_epochs": 501,
     "G_input_dim": 3,
-    "G_hidden_dim": 8,
+    "G_hidden_dim": 32,
     "input_dim": 3,
-    "M_num_samples": 6,
-    "M_hidden_dim": 10,
+    "M_num_samples": 8,
+    "M_hidden_dim": 6,
     "lr_M": 0.005,
     "Lambda1": 50,
     "Lambda2": 1,
@@ -67,7 +66,7 @@ config = {
 }
 config = Config(config)
 
-period_log: int = 5
+period_log: int = 1
 early_stop_val_loss = EarlyStopping(
     monitor="train_pcfd",
     min_delta=1e-4,
@@ -107,27 +106,33 @@ trainer = Trainer(
 )
 
 logger.info("Creating the model.")
-lstm_generator = LSTMGenerator(
+lstm_generator = LSTMGenerator_Diffusion(
     input_dim=config.input_dim,
-    hidden_dim=8,
-    output_dim=config.input_dim - 1,
+    ###Be careful, because of the operations we do, this is actually, a function. See how to do it better.
+    output_dim=(config.input_dim - 1),
+    seq_len=config.n_lags,
+    hidden_dim=32,
     n_layers=1,
     noise_scale=1.0,
     BM=True,
     activation=nn.Identity(),
 )
-model = PCFGANTrainer(
-    generator=lstm_generator,
-    config=config,
-    learning_rate_gen=config.lr_G,
-    learning_rate_disc=config.lr_D,
-    num_D_steps_per_G_step=config.D_steps_per_G_step,
-    num_samples_pcf=config.M_num_samples,
-    hidden_dim_pcf=config.M_hidden_dim,
-    # wip: THESE TWO SEEM UNUSED??
-    test_metrics_train=None,
-    test_metrics_test=None,
-    # WIP I THINK BATCH SIZE DOES SMTHG DIFFERENT
+model = (
+    # PCFGANTrainer(
+    DiffPCFGANTrainer(
+        generator=lstm_generator,
+        config=config,
+        learning_rate_gen=config.lr_G,
+        learning_rate_disc=config.lr_D,
+        num_D_steps_per_G_step=config.D_steps_per_G_step,
+        num_samples_pcf=config.M_num_samples,
+        hidden_dim_pcf=config.M_hidden_dim,
+        num_diffusion_steps=32,
+        # wip: THESE TWO SEEM UNUSED??
+        test_metrics_train=None,
+        test_metrics_test=None,
+        # WIP I THINK BATCH SIZE DOES SMTHG DIFFERENT
+    )
 )
 logger.info("Model created.")
 

@@ -33,6 +33,10 @@ class LSTMGenerator_Diffusion(nn.Module):
         activation=nn.Tanh(),
     ):
         super().__init__()
+        ####
+        # Legacy code has input_dim and output_dim. I think instead we could
+        # have time_series_dim, diffusion_dim and prediction_dim. That should be enough to make it clear.
+        ####
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.seq_len = seq_len
@@ -41,7 +45,7 @@ class LSTMGenerator_Diffusion(nn.Module):
         self.rnn_num_layers = n_layers
 
         self.rnn = nn.LSTM(
-            input_size=self.input_dim,
+            input_size=self.output_dim * self.seq_len,
             hidden_size=self.rnn_hidden_dim,
             num_layers=self.rnn_num_layers,
             batch_first=True,

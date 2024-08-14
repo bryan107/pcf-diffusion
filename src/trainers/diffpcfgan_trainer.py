@@ -34,6 +34,8 @@ class DiffPCFGANTrainer(Trainer):
             test_metrics_train=test_metrics_train,
             test_metrics_test=test_metrics_test,
             num_epochs=config.num_epochs,
+            # TODO 14/08/2024 nie_k: technically this is almost correct but would be good to do it properly.
+            feature_dim_time_series=config.input_dim - 1,
         )
 
         # Parameter for pytorch lightning
