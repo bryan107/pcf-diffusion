@@ -27,20 +27,21 @@ class Projection(nn.Module):
 
         self.channels = channels
         self.param_map = UnitaryLieAlgebra(hidden_size)
-        self.A = nn.Parameter(
+        self.measure_matrices = nn.Parameter(
             torch.empty(
                 input_size, channels, hidden_size, hidden_size, dtype=torch.cfloat
             )
         )
 
-        self.triv = torch.linalg.matrix_exp
         self.init_range = init_range
-        self.reset_parameters()
+        self.set_matrices_projection()
 
         self.hidden_size = hidden_size
 
-    def reset_parameters(self):
-        UnitaryLieAlgebra.unitary_lie_init_(self.A, partial(nn.init.normal_, std=1))
+    def set_matrices_projection(self):
+        UnitaryLieAlgebra.unitary_lie_init_(
+            self.measure_matrices, partial(nn.init.normal_, std=1)
+        )
 
     def M_initialize(self, A):
         init_range = np.linspace(0, 10, self.channels + 1)
@@ -60,7 +61,7 @@ class Projection(nn.Module):
         Returns:
             torch.Tensor: Tensor of shape (N, channels, hidden_size, hidden_size).
         """
-        A = self.param_map(self.A).permute(1, 2, -1, 0)  # C,m,m,in
-        AX = A.matmul(dX.T).permute(-1, 0, 1, 2)  # ->C,m,m,N->N,C,m,m
+        A = self.param_map(self.measure_matrices).permute(1, 2, -1, 0)  # C,m,m,in
+        A_dot_dX = A.matmul(dX.T).permute(-1, 0, 1, 2)  # ->C,m,m,N->N,C,m,m
 
-        return rescale_exp_matrix(self.triv, AX)
+        return rescale_exp_matrix(torch.linalg.matrix_exp, A_dot_dX)

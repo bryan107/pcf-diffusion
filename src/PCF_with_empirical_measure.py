@@ -37,8 +37,7 @@ class PCF_with_empirical_measure(nn.Module):
             return_sequence=False,
             init_range=init_range,
         )
-        for param in self.unitary_development.parameters():
-            param.requires_grad = True
+        return
 
     @staticmethod
     def HS_norm(X: torch.tensor, Y: torch.Tensor):
