@@ -61,6 +61,12 @@ class Projection(nn.Module):
             torch.Tensor: Tensor of shape (N, channels, hidden_size, hidden_size).
         """
         A = self.param_map(self.A).permute(1, 2, -1, 0)  # C,m,m,in
+        device_flag = dX.get_device()
+        if device_flag < 0:
+            A = A.to("cpu")
+        else:
+            A = A.to(device_flag)
+        #print(dX.dtype)
         AX = A.matmul(dX.T).permute(-1, 0, 1, 2)  # ->C,m,m,N->N,C,m,m
 
         return rescale_exp_matrix(self.triv, AX)
