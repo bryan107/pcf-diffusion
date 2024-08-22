@@ -77,7 +77,7 @@ class PCF_with_empirical_measure(nn.Module):
         return (torch.einsum("bii->b", D)).mean().real
 
     def distance_measure(
-        self, X1: torch.tensor, X2: torch.tensor, Lambda=0.1
+        self, X1: torch.tensor, X2: torch.tensor, Lambda=0.0
     ) -> torch.float:
         """
         TODO: this description is just not true.
