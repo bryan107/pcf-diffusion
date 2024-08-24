@@ -1,59 +1,87 @@
 import torch
-from corai_error import Error_type_setter
-from corai_util.tools.src import function_iterable
 from torch import nn
+from typing import List, Callable, Union
 
 
 class BasicNN(nn.Module):
     """
-    NN Module where the architecture is set up as:
+    A basic feedforward neural network with configurable hidden layers, activation functions, and dropout.
 
-    Input
-        -> Hidden Layer[0] -> activation function [0] - (no dropout on first layer)
-        -> Hidden Layer[1] -> Dropout -> activation function [1]
-        -> ...
-        -> Hidden Layer[-1] -> Output
-    To apply a last activation function, do it outside.
-    By passing list_hidden_sizes = [0], the model is a simple linear model and the activation function remains unused.
+    The architecture consists of:
+    - Input layer
+    - Sequence of hidden layers, each followed by an activation function and optionally a dropout layer
+    - Output layer
+
+    Args:
+        input_size (int): The size of the input features.
+        list_hidden_sizes (List[int]): A list containing the sizes of the hidden layers. If empty, the model becomes a linear model.
+        output_size (int): The size of the output layer.
+        biases (List[bool]): A list indicating whether to use bias for each layer. Must match the number of layers (hidden + output).
+        activation_functions (List[Callable]): A list of activation functions to apply after each hidden layer.
+        dropout (float): Dropout probability to apply after each hidden layer, between 0 and 1.
+
+    Raises:
+        TypeError: If `input_size` or `output_size` is not an integer.
+        ValueError: If `dropout` is not between 0 and 1.
+        ValueError: If the length of `biases` does not match the number of layers.
+        ValueError: If the length of `activation_functions` does not match the number of hidden layers.
     """
 
     module_linearity = nn.Linear
 
     def __init__(
-            self,
-            input_size,
-            list_hidden_sizes,
-            output_size,
-            list_biases,
-            activation_functions,
-            dropout,
+        self,
+        input_size: int,
+        list_hidden_sizes: List[int],
+        output_size: int,
+        biases: List[bool],
+        activation_functions: List[Callable],
+        dropout: float,
     ):
         super().__init__()
 
+        # Input validation
+        if not isinstance(input_size, int):
+            raise TypeError("input_size must be an integer.")
+        if not isinstance(output_size, int):
+            raise TypeError("output_size must be an integer.")
+        if not isinstance(dropout, float) or not (0 <= dropout < 1):
+            raise ValueError("dropout must be a float between 0 and 1.")
+        if len(biases) != len(list_hidden_sizes) + 1:
+            raise ValueError(
+                "Length of biases must match the number of layers (hidden + output)."
+            )
+        if (
+            len(activation_functions) != len(list_hidden_sizes)
+            and len(list_hidden_sizes) > 0
+        ):
+            raise ValueError(
+                "Length of activation_functions must match the number of hidden layers."
+            )
+
         self.input_size = input_size
         self.list_hidden_sizes = list_hidden_sizes
-        self.is_model_without_hidden_layers = not self.list_hidden_sizes[0]
-
         self.output_size = output_size
-        # should always be defined after list_hidden_sizes.
-        self.biases = list_biases
+        self.biases = biases
         self.activation_functions = activation_functions
         self.dropout = dropout
+
+        self._layers = nn.ModuleList()
+        self._apply_dropout = nn.Dropout(p=self.dropout)
 
         self.set_layers()
 
     def set_layers(self):
-        # array of fully connected layers
-        self._layers = nn.ModuleList()
-
-        # Initialise the input layer when it is requested (having a positive size hidden layer).
-        if self.list_hidden_sizes[0] > 0:
+        """Defines the layers of the network based on the initialization parameters."""
+        # Input layer (if hidden layers exist)
+        if self.list_hidden_sizes:
             self._layers.append(
                 self.module_linearity(
                     self.input_size, self.list_hidden_sizes[0], self.biases[0]
                 )
             )
-        # initialise the hidden layers
+
+        # Hidden layers
         for i in range(len(self.list_hidden_sizes) - 1):
             self._layers.append(
                 self.module_linearity(
@@ -63,10 +91,10 @@ class BasicNN(nn.Module):
                 )
             )
 
-        # The output layer, which can be the only layer if no hidden layers (hidden_sizes = [0]) are given.
+        # Output layer
         input_size_for_output = (
             self.input_size
-            if self.list_hidden_sizes[-1] == 0
+            if not self.list_hidden_sizes
             else self.list_hidden_sizes[-1]
         )
         self._layers.append(
@@ -75,20 +103,23 @@ class BasicNN(nn.Module):
             )
         )
 
-        self._apply_dropout = nn.Dropout(p=self.dropout)
-
-        # init the weights in the xavier way.
+        # Initialize weights using Xavier initialization
         self.apply(self.init_weights)
+        return
 
-    def forward(self, x):
-        # pass through the input layer, no dropout by definition.
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Defines the forward pass of the network.
 
-        ##### For debugging purposes, turn this on with the init in basic_nnexp and check whether the parametric exp model has optimal loss.
-        # self._layers[0].bias.data[0] = -1E10
-        if len(self.activation_functions):
+        Args:
+            x (torch.Tensor): Input tensor.
+
+        Returns:
+            torch.Tensor: Output tensor after passing through the network.
+        """
+        if self.list_hidden_sizes:
             x = self.activation_functions[0](self._layers[0](x))
 
-        # Pass through the hidden layers.
         for layer_index in range(1, len(self.list_hidden_sizes)):
             x = self.activation_functions[layer_index](
                 self._apply_dropout(self._layers[layer_index](x))
@@ -98,92 +129,15 @@ class BasicNN(nn.Module):
         return x
 
     @staticmethod
-    def init_weights(layer):
-        if type(layer) == nn.Linear and layer.weight.requires_grad:
+    def init_weights(layer: nn.Module):
+        """
+        Applies Xavier initialization to layers.
+
+        Args:
+            layer (nn.Module): A layer in the neural network.
+        """
+        if isinstance(layer, nn.Linear) and layer.weight.requires_grad:
             gain = nn.init.calculate_gain("sigmoid")
             torch.nn.init.xavier_uniform_(layer.weight, gain=gain)
             if layer.bias is not None and layer.bias.requires_grad:
                 layer.bias.data.fill_(0)
-        return
-
-    # section ######################################################################
-    #  #############################################################################
-    #  SETTERS / GETTERS
-
-    # WIP: actually all of that should be private! We do not want to modify the model's parameter after init...
-    @property
-    def input_size(self):
-        return self._input_size
-
-    @input_size.setter
-    def input_size(self, new_input_size):
-        if isinstance(new_input_size, int):
-            self._input_size = new_input_size
-        else:
-            raise Error_type_setter(f"Argument is not an {str(int)}.")
-
-    @property
-    def list_hidden_sizes(self):
-        return self._list_hidden_sizes
-
-    @list_hidden_sizes.setter
-    def list_hidden_sizes(self, new_list_hidden_sizes):
-        if function_iterable.is_iterable(new_list_hidden_sizes):
-            self._list_hidden_sizes = new_list_hidden_sizes
-        else:
-            raise Error_type_setter(f"Argument is not an Iterable.")
-
-    @property
-    def output_size(self):
-        return self._output_size
-
-    @output_size.setter
-    def output_size(self, new_output_size):
-        if isinstance(new_output_size, int):
-            self._output_size = new_output_size
-        else:
-            raise Error_type_setter(f"Argument is not an {str(int)}.")
-
-    @property
-    def biases(self):
-        return self._biases
-
-    # always set the biases after list_hidden_sizes:
-    @biases.setter
-    def biases(self, new_biases):
-        if function_iterable.is_iterable(new_biases):
-            assert len(new_biases) == len(self.list_hidden_sizes) + 1 or (
-                    len(new_biases) == 1 and self.is_model_without_hidden_layers
-            ), "Passed activation functions' length does not match the number of hidden sizes."
-            self._biases = new_biases
-        else:
-            raise Error_type_setter(f"Argument is not an iterable.")
-
-    @property
-    def activation_functions(self):
-        return self._activation_functions
-
-    @activation_functions.setter
-    def activation_functions(self, new_activation_functions):
-        if function_iterable.is_iterable(new_activation_functions):
-            assert len(new_activation_functions) == len(self.list_hidden_sizes) or (
-                    not len(new_activation_functions)
-                    and self.is_model_without_hidden_layers
-            ), "Passed activation functions do not the number of hidden sizes."
-            self._activation_functions = new_activation_functions
-        else:
-            raise Error_type_setter(f"Argument is not an iterable.")
-
-    @property
-    def dropout(self):
-        return self._dropout
-
-    @dropout.setter
-    def dropout(self, new_dropout):
-        # Dropout is a float between 0 and 1.
-        if isinstance(new_dropout, float) and 0 <= new_dropout < 1:
-            self._dropout = new_dropout
-        else:
-            raise Error_type_setter(
-                f"Argument is not a {str(float)} between 0. and 1.."
-            )
