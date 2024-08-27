@@ -1,8 +1,8 @@
 import typing
 
-import corai_plot
 import numpy as np
-from corai_plot import APlot
+import seaborn as sns
+from matplotlib import pyplot as plt
 from pytorch_lightning.loggers import LightningLoggerBase
 from pytorch_lightning.loggers.base import rank_zero_experiment
 from pytorch_lightning.utilities import rank_zero_only
@@ -41,7 +41,10 @@ class TrainingHistoryLogger(LightningLoggerBase):
     val_keywords = ["val", "validation"]
 
     def __init__(
-            self, metrics: typing.Iterable[str], aplot_flag=False, frequency_epoch_logging=1
+        self,
+        metrics: typing.Iterable[str],
+        plot_loss_history: bool = False,
+        frequency_epoch_logging: int = 1,
     ):
         # frequency_epoch_logging = check_val_every_n_epoch from trainer.
         # metrics are the metrics that will be plotted at each iteration of the evolution of the loss. Iterable.
@@ -55,13 +58,13 @@ class TrainingHistoryLogger(LightningLoggerBase):
         self.history = {}
         # The defaultdict will create an entry with an empty list if they key is missing when trying to access
         self.freq_epch = frequency_epoch_logging
-        if aplot_flag:
-            self.aplot = corai_plot.APlot(how=(1, 1))
-            self.colors = corai_plot.AColorsetDiscrete("Dark2")
+        if plot_loss_history:
+            self.fig, self.ax = plt.subplots(figsize=(7, 5))  # Create a figure and axis
+            self.colors = sns.color_palette("Dark2")  # Get a color palette from seaborn
         else:
-            self.aplot: typing.Optional[APlot] = None
+            self.fig, self.ax = None, None
 
-        self.metrics = metrics
+        self.metrics: typing.Iterable[str] = metrics
         # Adding a nan to the metrics with validation inside
         # (this is because pytorch lightning does validation after the optimisation step).
         # Hence, there is always a shift between the two values.
@@ -69,8 +72,8 @@ class TrainingHistoryLogger(LightningLoggerBase):
         for name in self.metrics:
             # This is done such that we can use fetch_score method in the plotting method.
             if any(
-                    val_keyword in name
-                    for val_keyword in TrainingHistoryLogger.val_keywords
+                val_keyword in name
+                for val_keyword in TrainingHistoryLogger.val_keywords
             ):
                 self.history[name] = [np.NAN]
             else:
@@ -99,8 +102,8 @@ class TrainingHistoryLogger(LightningLoggerBase):
                 else:
                     # If the last value of the epoch is not the one we are currently trying to add:
                     if not len(self.history["epoch"]) or not self.history["epoch"][
-                                                                 -1
-                                                             ] == (metric_value + 1):
+                        -1
+                    ] == (metric_value + 1):
                         # We shift by 1 for the plot.
                         self.history["epoch"].append(metric_value + 1)
             self.plot_history_prediction()
@@ -120,7 +123,7 @@ class TrainingHistoryLogger(LightningLoggerBase):
         if key in self.history:
             # If contains a keyword indicating it is a validation metric.
             if any(
-                    val_keyword in key for val_keyword in TrainingHistoryLogger.val_keywords
+                val_keyword in key for val_keyword in TrainingHistoryLogger.val_keywords
             ):
                 # Shifted list, the last validation loss corresponds to the model with parameters of the epoch n+1.
                 return self.history[key][:-1]
@@ -158,41 +161,34 @@ class TrainingHistoryLogger(LightningLoggerBase):
         (epochs_loss,) = self.fetch_score(["epoch"])
         losses = self.fetch_score(self.metrics)
         len_loss = [len(lst) for lst in losses]
-        if self.aplot is not None and max(len_loss) == min(len_loss) == len(
-                epochs_loss
-        ):
-            # plot the prediction:
-            self.aplot._axs[0].clear()
+        if self.fig is not None and max(len_loss) == min(len_loss) == len(epochs_loss):
+            self.ax.clear()
 
-            # plot losses
-            if (
-                    len(epochs_loss) > 1
-            ):  # make the test so it does not plot in the case of empty loss.
+            # Ensure there's data to plot
+            if len(epochs_loss) > 1:
                 for i, (color, loss) in enumerate(zip(self.colors, losses)):
-                    self.aplot.uni_plot(
-                        0,
+                    self.ax.plot(
                         epochs_loss,
                         loss,
-                        dict_plot_param={
-                            "color": color,
-                            "linestyle": "-",
-                            "linewidth": 2.5,
-                            "markersize": 0.0,
-                            "label": self.metrics[i],
-                        },
-                        dict_ax={
-                            "title": "Dynamical Image of History Training",
-                            "xlabel": "Epochs",
-                            "ylabel": "Loss",
-                            "yscale": "log",
-                        },
+                        color=color,
+                        linestyle="-",
+                        linewidth=2.5,
+                        markersize=0.0,
+                        label=self.metrics[i],
                     )
-            self.aplot.show_legend()
-            self.aplot.show_and_continue()
+
+            self.ax.set_title("Dynamical Image of History Training")
+            self.ax.set_xlabel("Epochs")
+            self.ax.set_ylabel("Loss")
+            self.ax.set_yscale("log")
+            self.ax.legend(loc="best")
+
+            plt.draw()
+            plt.pause(0.001)
 
     @property
     def name(self):
-        return "Corai_History_Dict_Logger"
+        return "History_Dict_Logger"
 
     @property
     def version(self):
