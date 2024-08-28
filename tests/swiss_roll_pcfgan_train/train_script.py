@@ -3,19 +3,18 @@ import time
 
 import numpy as np
 import seaborn as sns
-import torch.nn as nn
 from matplotlib import pyplot as plt
 from pytorch_lightning import seed_everything, Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
 from src.logger.init_logger import set_config_logging
+from src.networks.models.toynet import ToyNet
 from tests.swiss_roll_pcfgan_train.swissroll_dataset import SwissRoll_Dataset
 
 set_config_logging()
 logger = logging.getLogger(__name__)
 
 from config import ROOT_DIR
-from src.networks.lstmgenerator_diffusion import LSTMGenerator_Diffusion
 from src.trainers.diffpcfgan_trainer import DiffPCFGANTrainer
 from src.utils.progressbarwithoutvalbatchupdate import ProgressbarWithoutValBatchUpdate
 from src.utils.traininghistorylogger import TrainingHistoryLogger
@@ -106,33 +105,33 @@ trainer = Trainer(
 )
 
 logger.info("Creating the model.")
-lstm_generator = LSTMGenerator_Diffusion(
-    input_dim=config.input_dim,
-    ###Be careful, because of the operations we do, this is actually, a function. See how to do it better.
-    output_dim=(config.input_dim - 1),
-    seq_len=config.n_lags,
-    hidden_dim=32,
-    n_layers=1,
-    noise_scale=1.0,
-    BM=True,
-    activation=nn.Identity(),
-)
-model = (
-    # PCFGANTrainer(
-    DiffPCFGANTrainer(
-        generator=lstm_generator,
-        config=config,
-        learning_rate_gen=config.lr_G,
-        learning_rate_disc=config.lr_D,
-        num_D_steps_per_G_step=config.D_steps_per_G_step,
-        num_samples_pcf=config.M_num_samples,
-        hidden_dim_pcf=config.M_hidden_dim,
-        num_diffusion_steps=32,
-        # wip: THESE TWO SEEM UNUSED??
-        test_metrics_train=None,
-        test_metrics_test=None,
-        # WIP I THINK BATCH SIZE DOES SMTHG DIFFERENT
-    )
+####### Artefact
+# lstm_generator = LSTMGenerator_Diffusion(
+#     input_dim=config.input_dim,
+#     ###Be careful, because of the operations we do, this is actually, a function. See how to do it better.
+#     output_dim=(config.input_dim - 1),
+#     seq_len=config.n_lags,
+#     hidden_dim=32,
+#     n_layers=1,
+#     noise_scale=1.0,
+#     BM=True,
+#     activation=nn.Identity(),
+# )
+###########
+score_network = ToyNet(data_dim=config.input_dim)
+model = DiffPCFGANTrainer(
+    score_network=score_network,
+    config=config,
+    learning_rate_gen=config.lr_G,
+    learning_rate_disc=config.lr_D,
+    num_D_steps_per_G_step=config.D_steps_per_G_step,
+    num_samples_pcf=config.M_num_samples,
+    hidden_dim_pcf=config.M_hidden_dim,
+    num_diffusion_steps=32,
+    # wip: THESE TWO SEEM UNUSED??
+    test_metrics_train=None,
+    test_metrics_test=None,
+    # WIP I THINK BATCH SIZE DOES SMTHG DIFFERENT
 )
 logger.info("Model created.")
 

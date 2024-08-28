@@ -14,7 +14,7 @@ set_config_logging()
 logger = logging.getLogger(__name__)
 
 from config import ROOT_DIR
-from src.networks.lstmgenerator_diffusion import LSTMGenerator_Diffusion
+from src.networks.models.lstmgenerator_diffusion import LSTMGenerator_Diffusion
 from src.trainers.diffpcfgan_trainer import DiffPCFGANTrainer
 from src.utils.progressbarwithoutvalbatchupdate import ProgressbarWithoutValBatchUpdate
 from src.utils.traininghistorylogger import TrainingHistoryLogger
