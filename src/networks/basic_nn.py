@@ -1,6 +1,7 @@
+from typing import List, Callable
+
 import torch
 from torch import nn
-from typing import List, Callable, Union
 
 
 class BasicNN(nn.Module):
@@ -70,6 +71,7 @@ class BasicNN(nn.Module):
         self._apply_dropout = nn.Dropout(p=self.dropout)
 
         self.set_layers()
+        return
 
     def set_layers(self):
         """Defines the layers of the network based on the initialization parameters."""

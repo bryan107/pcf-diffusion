@@ -113,16 +113,16 @@ class Trainer(LightningModule):
             real_X.shape[-1], fake_X.shape[-1]
         )
         assert (
-            len(real_X.shape) == 3
+            len(real_X.shape) == 2
         ), "Data should have 3 dimensions, but got {}".format(len(real_X.shape))
         assert (
-            len(fake_X.shape) == 3
+            len(fake_X.shape) == 2
         ), "Data should have 3 dimensions, but got {}".format(len(fake_X.shape))
 
         random_indices = torch.randint(real_X.shape[0], (real_X.shape[0],))
 
         # Only supporting 2D
-        if real_X.shape[-1] != 3:
+        if real_X.shape[-1] != 2:
             # warning without terminating
 
             warnings.warn(
@@ -131,15 +131,10 @@ class Trainer(LightningModule):
                 ),
                 RuntimeWarning,
             )
-            logger.warn(
-                "Only supporting 2D data for swiss roll! So showing 2 out of 3 dimensions. Here, we received {} dimensions.".format(
-                    real_X.shape[-1]
-                )
-            )
 
         plt.scatter(
-            real_X[random_indices, -1, 0].detach().cpu().numpy().T,
-            real_X[random_indices, -1, 1].detach().cpu().numpy().T,
+            real_X[random_indices, 0].detach().cpu().numpy().T,
+            real_X[random_indices, 1].detach().cpu().numpy().T,
             alpha=0.5,
         )
         plt.scatter(

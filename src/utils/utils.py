@@ -78,11 +78,12 @@ def cat_linspace_times(values_time_series):
     return torch.cat([values_time_series, tt], dim=-1)
 
 
+# TODO 28/08/2024 nie_k: UNUSED
 # TODO 12/08/2024 nie_k: Combine both methods for any shape >= 3
 def cat_linspace_times_4D(values_time_series):
     assert (
         len(values_time_series.shape) == 4
-    ), f"Input shape must be [size, length, dim] but got {values_time_series.shape}"
+    ), f"Input shape must be [Diffusion steps, size, length, dim] but got {values_time_series.shape}"
 
     S, N, L, D = values_time_series.shape
     tt = (

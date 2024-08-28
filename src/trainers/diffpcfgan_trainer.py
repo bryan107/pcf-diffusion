@@ -10,7 +10,6 @@ from src.differentialequations.diffusionprocess_continuous import (
     ContinuousDiffusionProcess,
 )
 from src.trainers.trainer import Trainer
-from src.utils.utils import cat_linspace_times_4D
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +60,7 @@ class DiffPCFGANTrainer(Trainer):
             num_samples=self.num_samples_pcf,
             hidden_size=self.hidden_dim_pcf,
             # TODO 13/08/2024 nie_k: instead of input_dim, set time_series_for_compar_dim
-            input_size=self.config.input_dim * self.config.n_lags,
+            input_size=self.config.input_dim * self.config.n_lags + 1,
         )
         self.D_steps_per_G_step = num_D_steps_per_G_step
 
@@ -84,7 +83,7 @@ class DiffPCFGANTrainer(Trainer):
         noise_start_seq_z: typing.Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         # Alias for forward for clarity
-        return self.augmented_forward(num_seq, seq_len, dim_seq, noise_start_seq_z)
+        return self(num_seq, seq_len, dim_seq, noise_start_seq_z)
 
     def forward(
         self,
@@ -109,26 +108,6 @@ class DiffPCFGANTrainer(Trainer):
         )
 
         return traj_back.flip(0)
-
-    def augmented_forward(
-        self,
-        num_seq: typing.Optional[int] = None,
-        seq_len: typing.Optional[int] = None,
-        dim_seq: typing.Optional[int] = None,
-        noise_start_seq_z: typing.Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        # Compare to forward, add time to the diffused trajectories.
-
-        # The output is the whole diffusion path of shape (S,N,L,D)
-        out = self(
-            num_seq=num_seq,
-            seq_len=seq_len,
-            dim_seq=dim_seq,
-            noise_start_seq_z=noise_start_seq_z,
-        )
-        # WIP: add zero beginning of sequence but not crucial because we match partially the whole trajectory
-        out = cat_linspace_times_4D(out)
-        return out
 
     def configure_optimizers(self):
         optim_gen = torch.optim.Adam(
@@ -167,27 +146,29 @@ class DiffPCFGANTrainer(Trainer):
 
         logger.debug("Targets for validation: %s", targets)
         diffused_targets: torch.Tensor = self._get_forward_path(targets, [])
-        logger.debug(
-            "Diffused targets (transposed and flattened) for validation: %s",
-            diffused_targets.transpose(0, 1).flatten(2, 3),
-        )
-
         denoised_diffused_targets: torch.Tensor = self.get_backward_path(
-            noise_start_seq_z=diffused_targets[-1, :, :, :-1]
+            noise_start_seq_z=diffused_targets[-1]
         )
 
+        diffused_targets = self.flatten_seqs_feats_and_add_time(diffused_targets)
+        denoised_diffused_targets = self.flatten_seqs_feats_and_add_time(
+            denoised_diffused_targets
+        )
         logger.debug(
-            "Denoised samples (transposed and flattened) for validation: %s",
-            denoised_diffused_targets.transpose(0, 1).flatten(2, 3),
+            "Diffused targets for validation: %s",
+            diffused_targets,
+        )
+        logger.debug(
+            "Denoised samples for validation: %s",
+            denoised_diffused_targets,
         )
 
-        # TODO:: i am confused! `i` goes from 1 to num_diffusion_steps-1, so there is a missing step???
         loss_gen = self.discriminator.distance_measure(
             # WIP: Hardcoded lengths of diffusion sequence to consider.
             # Slice to keep only 20 steps, because anyway the PCF can't capture long time sequences.
-            diffused_targets[1:17].transpose(0, 1).flatten(2, 3),
-            denoised_diffused_targets[:16].transpose(0, 1).flatten(2, 3),
-            Lambda=0.1,
+            diffused_targets[:, :16],
+            denoised_diffused_targets[:, :16],
+            lambda_y=0.1,
         )
 
         self.log(
@@ -199,37 +180,41 @@ class DiffPCFGANTrainer(Trainer):
         )
 
         # TODO 11/08/2024 nie_k: A bit of a hack, I usually code this better but will do the trick for now.
+        # TODO 29/08/2024 nie_k: The plot need to be change depending on dataset (manually) and also would not work for sequences
         if not (self.current_epoch + 1) % PERIOD_PLOT_VAL:
             path = (
                 self.output_dir_images
                 + f"pred_vs_true_epoch_{str(self.current_epoch + 1)}"
             )
-            self.evaluate(denoised_diffused_targets[0], targets, path)
+            self.evaluate(denoised_diffused_targets[:, 0, :-1], targets[:, 0], path)
         return
 
     def _training_step_gen(self, optim_gen, targets: torch.Tensor) -> float:
         optim_gen.zero_grad()
 
         diffused_targets: torch.Tensor = self._get_forward_path(targets, [])
-        logger.debug(
-            "Diffused targets (transposed and flattened) for training: %s",
-            diffused_targets.transpose(0, 1).flatten(2, 3),
-        )
         denoised_diffused_targets: torch.Tensor = self.get_backward_path(
-            noise_start_seq_z=diffused_targets[-1, :, :, :-1]
+            noise_start_seq_z=diffused_targets[-1]
         )
 
+        diffused_targets = self.flatten_seqs_feats_and_add_time(diffused_targets)
+        denoised_diffused_targets = self.flatten_seqs_feats_and_add_time(
+            denoised_diffused_targets
+        )
         logger.debug(
-            "Denoised samples (transposed and flattened) for training: %s",
-            denoised_diffused_targets.transpose(0, 1).flatten(2, 3),
+            "Diffused targets for training: %s",
+            diffused_targets,
+        )
+        logger.debug(
+            "Denoised samples for training: %s",
+            denoised_diffused_targets,
         )
 
-        # TODO:: i am confused! `i` goes from 1 to num_diffusion_steps-1, so there is a missing step???
         loss_gen = self.discriminator.distance_measure(
             # WIP: Hardcoded lengths of diffusion sequence to consider.
-            diffused_targets[1:17].transpose(0, 1).flatten(2, 3),
-            denoised_diffused_targets[:16].transpose(0, 1).flatten(2, 3),
-            Lambda=0.1,
+            diffused_targets[:, :16],
+            denoised_diffused_targets[:, :16],
+            lambda_y=0.1,
         )
 
         self.manual_backward(loss_gen)
@@ -239,18 +224,21 @@ class DiffPCFGANTrainer(Trainer):
     def _training_step_disc(self, optim_discr, targets: torch.Tensor) -> float:
         optim_discr.zero_grad()
 
-        diffused_targets: torch.Tensor = self._get_forward_path(targets, [])
-
         with torch.no_grad():
+            diffused_targets: torch.Tensor = self._get_forward_path(targets, [])
             denoised_diffused_targets: torch.Tensor = self.get_backward_path(
-                noise_start_seq_z=diffused_targets[-1, :, :, :-1]
+                noise_start_seq_z=diffused_targets[-1]
+            )
+            diffused_targets = self.flatten_seqs_feats_and_add_time(diffused_targets)
+            denoised_diffused_targets = self.flatten_seqs_feats_and_add_time(
+                denoised_diffused_targets
             )
 
         # WIP: Hardcoded lengths of diffusion sequence to consider.
         loss_disc = -self.discriminator.distance_measure(
-            diffused_targets[1:17].transpose(0, 1).flatten(2, 3),
-            denoised_diffused_targets[:16].transpose(0, 1).flatten(2, 3),
-            Lambda=0.1,
+            diffused_targets[:, :16],
+            denoised_diffused_targets[:, :16],
+            lambda_y=0.1,
         )
         self.manual_backward(loss_disc)
         optim_discr.step()
@@ -284,27 +272,36 @@ class DiffPCFGANTrainer(Trainer):
             )
         )
 
+        # Shape (S, N, L, D). This shape makes sense because we are interested in the tensor N,L,D by slices over S-dim.
+        return diffused_starting_data
+
+    def _get_noise_vector(self, shape: typing.Tuple[int, ...]) -> torch.Tensor:
+        return torch.randn(*shape, device=self.device)
+
+    def flatten_seqs_feats_and_add_time(self, data: torch.Tensor) -> torch.Tensor:
+        # WIP: add zero beginning of sequence but not crucial because we match partially the whole trajectory
+
+        # Merge the sequence dimension (dim 2) and the feature dimension (dim 3) into a single dimension.
+        # Flattening is required before adding time otherwise we would add too many dimensions with the time.
+        data = data.flatten(2, 3)
         # Add the times to the data by creating a linspace between 0,1 and which is repeated for all (N,L).
         diffusion_times = (
             torch.linspace(
                 0.0,
                 1.0,
-                steps=diffused_starting_data.shape[2],
-                device=starting_data.device,
+                steps=data.shape[0],
+                device=data.device,
             )
-            .view(-1, 1, 1, 1)
+            .view(-1, 1, 1)
             .expand(
-                diffused_starting_data.shape[0],
-                diffused_starting_data.shape[1],
-                diffused_starting_data.shape[2],
+                data.shape[0],
+                data.shape[1],
                 1,
             )
         )
-        diffused_starting_data_with_times = torch.cat(
-            (diffused_starting_data, diffusion_times), dim=-1
-        )
-        # Shape (S, N, L, D+1). This shape makes sense because we are interested in the tensor N,L,D by slices over S-dim.
-        return diffused_starting_data_with_times
-
-    def _get_noise_vector(self, shape: typing.Tuple[int, ...]) -> torch.Tensor:
-        return torch.randn(*shape, device=self.device)
+        data = torch.cat((data, diffusion_times), dim=-1)
+        # Permute the batch axis and the diffusion axis.
+        data = data.transpose(
+            0, 1
+        )  # adding contiguous slows down the code tremendously.
+        return data

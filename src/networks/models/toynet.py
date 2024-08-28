@@ -13,25 +13,26 @@ class ToyNet(nn.Module):
     # Model for diffusion where you pass the data (x) and the time step of the diffusion (t).
     def __init__(self, data_dim):
         super().__init__()
+        self.input_dim = data_dim
+        self.hidden_dim = 256
         self.time_embed_dim = 16
-        dim = 256
         out_dim = data_dim
 
         self.trigotime_embed = TrigoTimeEmbedding(self.time_embed_dim)
-        self.data_resnet = ResNet_FC(data_dim, dim, num_res_blocks=3)
+        self.data_resnet = ResNet_FC(self.input_dim, self.hidden_dim, num_res_blocks=3)
 
         # Transforms time embeddings
         self.time_fcnn = BasicNN(
             self.time_embed_dim,
-            [dim],
-            dim,
+            [self.hidden_dim],
+            self.hidden_dim,
             [True, True],
             [nn.SiLU()],
             0.0,
         )
         self.out_fcnn = BasicNN(
-            dim,
-            [dim],
+            self.hidden_dim,
+            [self.hidden_dim],
             out_dim,
             [True, True],
             [nn.SiLU()],
