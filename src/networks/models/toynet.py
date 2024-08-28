@@ -5,7 +5,6 @@ from src.networks.basic_nn import BasicNN
 from src.networks.embeddings.time import TrigoTimeEmbedding
 
 sys.path.append(os.getcwd() + "/Toy-Diffusion-Models")
-import torch
 import torch.nn as nn
 import numpy as np
 
@@ -19,8 +18,9 @@ class ToyNet(nn.Module):
         out_dim = data_dim
 
         self.trigotime_embed = TrigoTimeEmbedding(self.time_embed_dim)
-        self.x_module = ResNet_FC(data_dim, dim, num_res_blocks=3)
+        self.data_resnet = ResNet_FC(data_dim, dim, num_res_blocks=3)
 
+        # Transforms time embeddings
         self.time_fcnn = BasicNN(
             self.time_embed_dim,
             [dim],
@@ -37,19 +37,13 @@ class ToyNet(nn.Module):
             [nn.SiLU()],
             0.0,
         )
-        self.out_module = nn.Sequential(
-            nn.Linear(dim, dim),
-            nn.SiLU(),
-            nn.Linear(dim, out_dim),
-        )
+        return
 
     def forward(self, x, t: int or list[int]):
-        t = timesteps_to_tensor(t, batch_size=x.shape[0]).to(x.device)
-
-        t_emb = self.trigotime_embed(t)
-        t_out = self.t_module(t_emb)
-        x_out = self.x_module(x)
-        out = self.out_module(x_out + t_out)
+        t_emb = self.trigotime_embed(t.view(1, 1))
+        t_out = self.time_fcnn(t_emb)
+        x_out = self.data_resnet(x)
+        out = self.out_fcnn(x_out + t_out)
         return out
 
 
@@ -82,16 +76,3 @@ class ResNet_FC(nn.Module):
         for res_block in self.res_blocks:
             h = (h + res_block(h)) / np.sqrt(2)
         return h
-
-
-def timesteps_to_tensor(ts: int or list[int], batch_size):
-    if isinstance(ts, list):
-        assert (
-            batch_size % len(ts) == 0
-        ), "batch_size must be divisible by length of timesteps list"
-
-    if isinstance(ts, int):
-        return ts * torch.ones(batch_size)
-    else:
-        mini_batch_size = batch_size // len(ts)
-        return torch.cat([ts[i] * torch.ones(mini_batch_size) for i in range(len(ts))])

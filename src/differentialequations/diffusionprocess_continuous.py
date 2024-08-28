@@ -1,7 +1,6 @@
 from enum import Enum
 from typing import Dict, Tuple, Union
 
-import numpy as np
 import torch
 import torch.nn as nn
 
@@ -22,9 +21,9 @@ class ContinuousDiffusionProcess(nn.Module):
         schedule: str,
         sde_type: SDEType = SDEType.VP,
         sde_info: Dict[SDEType, Dict[str, float]] = {
-            "VP": {"beta_min": 0.1, "beta_max": 20},
-            "subVP": {"beta_min": 0.1, "beta_max": 20},
-            "VE": {"sigma_min": 0.01, "sigma_max": 50},
+            SDEType.VP: {"beta_min": 0.1, "beta_max": 20},
+            SDEType.SUB_VP: {"beta_min": 0.1, "beta_max": 20},
+            SDEType.VE: {"sigma_min": 0.01, "sigma_max": 50},
         },
     ):
         """
@@ -38,7 +37,7 @@ class ContinuousDiffusionProcess(nn.Module):
         """
         super().__init__()
 
-        self.total_steps = total_steps
+        self.num_diffusion_steps = total_steps
         self.schedule = schedule
         if sde_info is None:
             sde_info = {
@@ -47,12 +46,25 @@ class ContinuousDiffusionProcess(nn.Module):
                 SDEType.VE: {"sigma_min": 0.01, "sigma_max": 50},
             }
 
-        self.dt: float = 1.0 / self.total_steps  # Step size for SDE discretization
+        self.dt: torch.Tensor = nn.Parameter(
+            torch.Tensor([1.0 / self.num_diffusion_steps]), requires_grad=False
+        )
         self.sde_type: SDEType = sde_type
         self.sde_params: Dict[str, float] = sde_info[sde_type]
         self.coefficients: Dict[str, float] = self._compute_coefficients()
 
-    def forward_sample(self, data: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        self.linspace_diffusion_steps = torch.nn.Parameter(
+            torch.linspace(
+                1,
+                self.num_diffusion_steps,
+                self.num_diffusion_steps,
+                dtype=torch.long,
+            ),
+            requires_grad=False,
+        )
+        return
+
+    def forward_sample(self, x: torch.Tensor) -> torch.Tensor:
         """
         Generate forward samples using the SDE.
 
@@ -60,17 +72,14 @@ class ContinuousDiffusionProcess(nn.Module):
             data (torch.Tensor): The input data.
 
         Returns:
-            Tuple[torch.Tensor, torch.Tensor]: The final sample and the trajectory.
+            torch.Tensor: The progressively noisier data of shape (S, N, L, D).
         """
-        x = data
         trajectory = [x]
 
-        for t in range(1, self.total_steps + 1):
-            x = self._forward_one_step(x, t)
+        for time_step in self.linspace_diffusion_steps:
+            x = self._forward_one_step(x, time_step)
             trajectory.append(x)
-
-        # Use torch.stack for the trajectory
-        return x, torch.stack(trajectory, dim=1)
+        return torch.stack(trajectory, dim=0)
 
     def backward_sample(
         self, noise: torch.Tensor, model: nn.Module
@@ -80,20 +89,19 @@ class ContinuousDiffusionProcess(nn.Module):
 
         Args:
             noise (torch.Tensor): The noise final point of the equation, starting the backward equation.
-            model (nn.Module): The model to predict the score.
+            model (nn.Module): The model to predict the score. Called with two arguments: first the data and then the timestep.
 
         Returns:
             Tuple[torch.Tensor, torch.Tensor]: The final sample and the trajectory.
         """
         x_t = noise
-        trajectory = [x_t]
+        denoised_data = [x_t]
 
-        for t in reversed(range(1, self.total_steps + 1)):
-            pred_score = model(x_t, t)
-            x_t = self._backward_one_step(x_t, t, pred_score)
-            trajectory.append(x_t)
-
-        return x_t, torch.stack(trajectory, dim=1)
+        for time_step in reversed(self.linspace_diffusion_steps):
+            pred_score = model(x_t, time_step)
+            x_t = self._backward_one_step(x_t, time_step, pred_score)
+            denoised_data.append(x_t)
+        return x_t, torch.stack(denoised_data, dim=0)
 
     def _forward_one_step(self, x_prev: torch.Tensor, t: int) -> torch.Tensor:
         """
@@ -101,14 +109,14 @@ class ContinuousDiffusionProcess(nn.Module):
 
         Args:
             x_prev (torch.Tensor): The state at the previous timestep.
-            t (int): The current timestep.
+            t (torch.Tensor): The current timestep (index) as a tensor of shape (1,).
 
         Returns:
             torch.Tensor: The state at the next timestep.
         """
         drift, diffusion = self._compute_drift_and_diffusion(x_prev, t - 1)
         noise = torch.randn_like(x_prev)
-        x_t = x_prev + drift * self.dt + diffusion * noise * np.sqrt(self.dt)
+        x_t = x_prev + drift * self.dt + diffusion * noise * torch.sqrt(self.dt)
         return x_t
 
     def _backward_one_step(
@@ -123,7 +131,7 @@ class ContinuousDiffusionProcess(nn.Module):
 
         Args:
             x_t (torch.Tensor): The state at the current timestep.
-            t (int): The current timestep.
+            t (torch.Tensor): The current timestep (index) as a tensor of shape (1,).
             pred_score (torch.Tensor): The predicted score from the model.
             clip_denoised (bool): Whether to clip the denoised output.
 
@@ -135,7 +143,7 @@ class ContinuousDiffusionProcess(nn.Module):
         x_prev = (
             x_t
             - (drift - diffusion**2 * pred_score) * self.dt
-            + diffusion * noise * np.sqrt(self.dt)
+            + diffusion * noise * torch.sqrt(self.dt)
         )
 
         if clip_denoised and x_t.ndim > 2:
@@ -170,12 +178,13 @@ class ContinuousDiffusionProcess(nn.Module):
 
         Args:
             diffused_process (torch.Tensor): The state at time t of shape (batch_size, *).
-            t (int): The current timestep as an index.
+            t (torch.Tensor): The current timestep (index) as a tensor of shape (1,).
 
         Returns:
             Tuple[torch.Tensor, float]: The drift (f_t) and diffusion (g_t) coefficients.
         """
-        normalized_t = t / self.total_steps  # Normalize timestep to [0, 1]
+        # Normalize timestep to [0, 1]
+        normalized_t: torch.Tensor = t / self.num_diffusion_steps
 
         if self.sde_type in {SDEType.VP, SDEType.SUB_VP}:
             beta_t = self.coefficients["beta_0"] + normalized_t * (
@@ -184,14 +193,17 @@ class ContinuousDiffusionProcess(nn.Module):
             drift = -0.5 * beta_t * diffused_process
 
             if self.sde_type == SDEType.VP:
-                diffusion = np.sqrt(beta_t)
-            elif self.sde_type == SDEType.SUB_VP:
-                discount = 1.0 - np.exp(
+                try:
+                    diffusion = torch.sqrt(beta_t)
+                except TypeError as t:
+                    print(t)
+            else:
+                discount = 1.0 - torch.exp(
                     -2.0 * self.coefficients["beta_0"] * normalized_t
                     - (self.coefficients["beta_1"] - self.coefficients["beta_0"])
                     * normalized_t**2.0
                 )
-                diffusion = np.sqrt(beta_t * discount)
+                diffusion = torch.sqrt(beta_t * discount)
 
             return drift, diffusion
 
@@ -202,11 +214,11 @@ class ContinuousDiffusionProcess(nn.Module):
                 * (self.coefficients["sigma_max"] / self.coefficients["sigma_min"])
                 ** normalized_t
             )
-            diffusion = sigma_t * np.sqrt(
+            diffusion = sigma_t * torch.sqrt(
                 2.0
                 * (
-                    np.log(self.coefficients["sigma_max"])
-                    - np.log(self.coefficients["sigma_min"])
+                    torch.log(self.coefficients["sigma_max"])
+                    - torch.log(self.coefficients["sigma_min"])
                 )
             )
             return drift, diffusion
@@ -224,7 +236,7 @@ class ContinuousDiffusionProcess(nn.Module):
         Returns:
             Tuple[torch.Tensor, Union[torch.Tensor, float]]: The mean and standard deviation for the perturbation kernel.
         """
-        normalized_t = t / self.total_steps  # Normalize timestep to [0, 1]
+        normalized_t = t / self.num_diffusion_steps  # Normalize timestep to [0, 1]
 
         if self.sde_type in {SDEType.VP, SDEType.SUB_VP}:
             log_mean_coeff = (
@@ -233,12 +245,12 @@ class ContinuousDiffusionProcess(nn.Module):
                 * (self.coefficients["beta_1"] - self.coefficients["beta_0"])
                 - 0.5 * normalized_t * self.coefficients["beta_0"]
             )
-            mean = np.exp(log_mean_coeff) * x_0
+            mean = torch.exp(log_mean_coeff) * x_0
 
             if self.sde_type == SDEType.VP:
-                std = np.sqrt(1.0 - np.exp(2.0 * log_mean_coeff))
+                std = torch.sqrt(1.0 - torch.exp(2.0 * log_mean_coeff))
             elif self.sde_type == SDEType.SUB_VP:
-                std = 1.0 - np.exp(2.0 * log_mean_coeff)
+                std = 1.0 - torch.exp(2.0 * log_mean_coeff)
 
             return mean, std
 

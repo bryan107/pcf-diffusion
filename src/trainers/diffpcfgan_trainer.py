@@ -5,6 +5,10 @@ import torch
 import torch.nn as nn
 
 from src.PCF_with_empirical_measure import PCF_with_empirical_measure
+from src.differentialequations.diffusionprocess_continuous import (
+    SDEType,
+    ContinuousDiffusionProcess,
+)
 from src.trainers.trainer import Trainer
 from src.utils.utils import cat_linspace_times_4D
 
@@ -19,7 +23,7 @@ PERIOD_PLOT_VAL = 5
 class DiffPCFGANTrainer(Trainer):
     def __init__(
         self,
-        generator,
+        score_network: nn.Module,
         config,
         learning_rate_gen,
         learning_rate_disc,
@@ -30,6 +34,7 @@ class DiffPCFGANTrainer(Trainer):
         test_metrics_train,
         test_metrics_test,
     ):
+        # score_network is used to denoise the data and will be called as score_net(data, time).
         super().__init__(
             test_metrics_train=test_metrics_train,
             test_metrics_test=test_metrics_test,
@@ -46,8 +51,8 @@ class DiffPCFGANTrainer(Trainer):
         self.lr_gen = learning_rate_gen
         self.lr_disc = learning_rate_disc
 
-        # Generator Params
-        self.generator = generator
+        # Score Network Params
+        self.score_network = score_network
 
         # Discriminator Params
         self.num_samples_pcf = num_samples_pcf
@@ -63,60 +68,62 @@ class DiffPCFGANTrainer(Trainer):
         self.output_dir_images = config.exp_dir
 
         # Diffusion:
+        self.diffusion_process = ContinuousDiffusionProcess(
+            total_steps=num_diffusion_steps,
+            schedule="cosine",
+            sde_type=SDEType.VP,
+        )
         self.num_diffusion_steps = num_diffusion_steps
-        # Initialise the noise parameters
-        alphas, betas, baralphas = self.get_noise_level()
-        self.alphas = nn.Parameter(alphas, requires_grad=False)
-        self.betas = nn.Parameter(betas, requires_grad=False)
-        self.baralphas = nn.Parameter(baralphas, requires_grad=False)
         return
+
+    def get_backward_path(
+        self,
+        num_seq: typing.Optional[int] = None,
+        seq_len: typing.Optional[int] = None,
+        dim_seq: typing.Optional[int] = None,
+        noise_start_seq_z: typing.Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        # Alias for forward for clarity
+        return self(num_seq, seq_len, dim_seq, noise_start_seq_z)
 
     def forward(
         self,
-        num_seq: int,
-        seq_len: int,
-        dim_seq: int,
+        num_seq: typing.Optional[int] = None,
+        seq_len: typing.Optional[int] = None,
+        dim_seq: typing.Optional[int] = None,
         noise_start_seq_z: typing.Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        # Denoise data to generate new samples.
+        assert (
+            num_seq is not None and seq_len is not None and dim_seq is not None
+        ) or noise_start_seq_z is not None, "Either the three parameters num_seq, seq_len, dim_seq need to be given or the noise_start_seq_z."
+
         # WIP: explain what noise_start_seq_z we need
         if noise_start_seq_z is None:
             noise_start_seq_z = self._get_noise_vector((num_seq, seq_len, dim_seq))
-        else:
-            assert noise_start_seq_z.shape == (
-                num_seq,
-                seq_len,
-                dim_seq,
-            ), (
-                f"Shape mismatch for noise_start_seq_z: "
-                f"Expected (num_seq={num_seq}, seq_len={seq_len}, dim_seq={dim_seq}) "
-                f"but got {noise_start_seq_z.shape} "
-                f"(actual shape). Ensure that the dimensions are correct."
-            )
 
-        # Returns a tensor with shape (num_seq, seq_len, generator.outputdim)
-        return self.generator(
-            num_seq,
-            seq_len,
-            dim_seq,
-            self.num_diffusion_steps,
-            self.device,
-            noise_start_seq_z,
-            self.alphas,
-            self.betas,
-            self.baralphas,
+        # Returns a tensor with shape (num_step_diffusion, num_seq, seq_len, generator.outputdim)
+
+        _, traj_back = self.diffusion_process.backward_sample(
+            noise_start_seq_z, self.score_network
         )
+
+        return traj_back.flip(0)
 
     def augmented_forward(
         self,
-        num_seq: int,
-        seq_len: int,
+        num_seq: typing.Optional[int] = None,
+        seq_len: typing.Optional[int] = None,
+        dim_seq: typing.Optional[int] = None,
         noise_start_seq_z: typing.Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        # Compare to forward, add time to the diffused trajectories.
+
         # The output is the whole diffusion path of shape (S,N,L,D)
         out = self(
             num_seq=num_seq,
             seq_len=seq_len,
-            dim_seq=self.config.input_dim,
+            dim_seq=dim_seq,
             noise_start_seq_z=noise_start_seq_z,
         )
         out = cat_linspace_times_4D(out)
@@ -124,7 +131,7 @@ class DiffPCFGANTrainer(Trainer):
 
     def configure_optimizers(self):
         optim_gen = torch.optim.Adam(
-            self.generator.parameters(),
+            self.score_network.parameters(),
             lr=self.lr_gen,
             weight_decay=0,
             betas=(0, 0.9),
@@ -138,6 +145,7 @@ class DiffPCFGANTrainer(Trainer):
         (targets,) = batch
         optim_gen, optim_discr = self.optimizers()
 
+        logger.debug("Targets for training: %s", targets)
         loss_gen = self._training_step_gen(optim_gen, targets)
 
         for i in range(self.D_steps_per_G_step):
@@ -156,20 +164,18 @@ class DiffPCFGANTrainer(Trainer):
     def validation_step(self, batch, batch_nb):
         (targets,) = batch
 
-        diffused_targets: torch.Tensor = self._construct_diffusing_process(
-            targets, self._linspace_diffusion_steps
+        logger.debug("Targets for validation: %s", targets)
+        diffused_targets: torch.Tensor = self._get_forward_path(targets, [1])
+        denoised_diffused_targets: torch.Tensor = self.get_backward_path(
+            noise_start_seq_z=diffused_targets[-1]
         )
-        denoised_trajectory_targets = self.augmented_forward(
-            num_seq=targets.shape[0],
-            seq_len=targets.shape[1],
-            noise_start_seq_z=diffused_targets[-1, :, :, :],
-        )
+
         # TODO:: i am confused! `i` goes from 1 to num_diffusion_steps-1, so there is a missing step???
         loss_gen = self.discriminator.distance_measure(
             # WIP: Hardcoded lengths of diffusion sequence to consider.
             # Slice to keep only 20 steps, because anyway the PCF can't capture long time sequences.
             diffused_targets[1:17].transpose(0, 1).flatten(2, 3),
-            denoised_trajectory_targets[:16].transpose(0, 1).flatten(2, 3),
+            denoised_diffused_targets[:16].transpose(0, 1).flatten(2, 3),
             Lambda=0.1,
         )
 
@@ -187,26 +193,22 @@ class DiffPCFGANTrainer(Trainer):
                 self.output_dir_images
                 + f"pred_vs_true_epoch_{str(self.current_epoch + 1)}"
             )
-            self.evaluate(denoised_trajectory_targets[0], targets, path)
+            self.evaluate(denoised_diffused_targets[0], targets, path)
         return
 
     def _training_step_gen(self, optim_gen, targets: torch.Tensor) -> float:
         optim_gen.zero_grad()
 
-        diffused_targets: torch.Tensor = self._construct_diffusing_process(
-            targets, self._linspace_diffusion_steps
+        diffused_targets: torch.Tensor = self._get_forward_path(targets, [1])
+        denoised_diffused_targets: torch.Tensor = self.get_backward_path(
+            noise_start_seq_z=diffused_targets[-1]
         )
 
-        denoised_trajectory_targets = self.augmented_forward(
-            num_seq=targets.shape[0],
-            seq_len=targets.shape[1],
-            noise_start_seq_z=diffused_targets[-1, :, :, :],
-        )
         # TODO:: i am confused! `i` goes from 1 to num_diffusion_steps-1, so there is a missing step???
         loss_gen = self.discriminator.distance_measure(
             # WIP: Hardcoded lengths of diffusion sequence to consider.
             diffused_targets[1:17].transpose(0, 1).flatten(2, 3),
-            denoised_trajectory_targets[:16].transpose(0, 1).flatten(2, 3),
+            denoised_diffused_targets[:16].transpose(0, 1).flatten(2, 3),
             Lambda=0.1,
         )
 
@@ -217,21 +219,17 @@ class DiffPCFGANTrainer(Trainer):
     def _training_step_disc(self, optim_discr, targets: torch.Tensor) -> float:
         optim_discr.zero_grad()
 
-        diffused_targets: torch.Tensor = self._construct_diffusing_process(
-            targets, self._linspace_diffusion_steps
-        )
+        diffused_targets: torch.Tensor = self._get_forward_path(targets, [1])
 
         with torch.no_grad():
-            denoised_trajectory_targets = self.augmented_forward(
-                num_seq=targets.shape[0],
-                seq_len=targets.shape[1],
-                noise_start_seq_z=diffused_targets[-1, :, :, :],
+            denoised_diffused_targets: torch.Tensor = self.get_backward_path(
+                noise_start_seq_z=diffused_targets[-1]
             )
 
         # WIP: Hardcoded lengths of diffusion sequence to consider.
         loss_disc = -self.discriminator.distance_measure(
             diffused_targets[1:17].transpose(0, 1).flatten(2, 3),
-            denoised_trajectory_targets[:16].transpose(0, 1).flatten(2, 3),
+            denoised_diffused_targets[:16].transpose(0, 1).flatten(2, 3),
             Lambda=0.1,
         )
         self.manual_backward(loss_disc)
@@ -239,104 +237,39 @@ class DiffPCFGANTrainer(Trainer):
 
         return loss_disc.item()
 
-    def _construct_diffusing_process(
+    def _get_forward_path(
         self,
         starting_data: torch.Tensor,
-        timestep_diffusion: torch.Tensor,
         # Ignore features to be diffused with a hack here.
-        indices_features_not_diffuse=[1],
+        indices_features_not_diffuse: typing.Iterable = [1],
     ) -> torch.Tensor:
-        # timestep_diffusion should have values between 0 and diffusion_steps -1, and where 0 corresponds to the initial data.
         # To get the totally noised data, use: output[-1, :, :, :]
 
-        expected_dtypes = [
-            torch.long,
-            torch.short,
-            torch.bool,
-            torch.int,
-            torch.int8,
-            torch.uint8,
-        ]
-        assert timestep_diffusion.dtype in expected_dtypes, (
-            f"Invalid dtype for timestep_diffusion: Expected one of {expected_dtypes} but got {timestep_diffusion.dtype}. "
-            f"Please ensure the tensor is of an appropriate type."
-        )
-        assert len(starting_data.shape) == 3, (
-            f"Incorrect shape for starting_data: "
-            f"Expected 3 dimensions (N, L, D) but got {len(starting_data.shape)} dimensions "
-            f"with shape {starting_data.shape}. "
-            f"Make sure the tensor is correctly reshaped or initialized."
-        )
-        # For each sequence in L, we compute a final diffused noise value of shape (N,D).
-        final_noise_per_sequence = self._get_noise_vector(
-            (starting_data.shape[0], 1, 1)
-        )
+        assert (
+            len(starting_data.shape) == 3
+        ), f"Incorrect shape for starting_data: Expected 3 dimensions (N, L, D) but got {len(starting_data.shape)} dimensions with shape {starting_data.shape}. Make sure the tensor is correctly reshaped or initialized."
 
-        # View the data in the format (S,N,L,D) by repeating the data S times.
-        starting_data = starting_data.unsqueeze(0).repeat(
-            self.num_diffusion_steps + 1, 1, 1, 1
+        diffused_starting_data: torch.Tensor = (
+            starting_data.clone()
+            .unsqueeze(0)
+            .repeat(self.num_diffusion_steps + 1, 1, 1, 1)
         )
-
-        portion_original_data = torch.pow(self.baralphas[timestep_diffusion], 0.5).view(
-            self.num_diffusion_steps + 1, 1, 1, 1
-        )
-        portion_white_noise = torch.pow(
-            1 - self.baralphas[timestep_diffusion], 0.5
-        ).view(self.num_diffusion_steps + 1, 1, 1, 1)
-
-        progressively_noisy_data: torch.Tensor = starting_data.clone()
 
         mask_where_diffuse = torch.ones(starting_data.shape[-1], dtype=torch.bool)
         mask_where_diffuse[indices_features_not_diffuse] = False
-        progressively_noisy_data[:, :, :, mask_where_diffuse] = (
-            portion_original_data * starting_data[:, :, :, mask_where_diffuse]
-            + portion_white_noise * final_noise_per_sequence
+
+        diffused_starting_data[:, :, :, mask_where_diffuse] = (
+            self.diffusion_process.forward_sample(
+                starting_data[:, :, mask_where_diffuse]
+            )
         )
+
         logger.debug(
             "Diffused data transposed and sliced: %s",
-            progressively_noisy_data.transpose(0, 1)[:, :, :, 0],
+            diffused_starting_data.transpose(0, 1)[:, :, :, 0],
         )
         # Shape (S, N, L, D). This shape makes sense because we are interested in the tensor N,L,D by slices over S-dim.
-        return progressively_noisy_data
-
-    def get_noise_level(self) -> typing.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        # Set noising variances betas as in Nichol and Dariwal paper (https://arxiv.org/pdf/2102.09672.pdf)
-        s = 0.008
-
-        timesteps = self._linspace_diffusion_steps.float()
-        schedule = (
-            torch.cos(
-                (timesteps / self.num_diffusion_steps + s) / (1.0 + s) * torch.pi / 2.0
-            )
-            ** 2
-        )
-
-        # All following tensors with shape [diffusion_steps]
-        baralphas: torch.Tensor = schedule / schedule[0]
-        betas: torch.Tensor = 1.0 - baralphas / torch.cat(
-            [baralphas[0:1], baralphas[0:-1]]
-        )
-        alphas: torch.Tensor = 1.0 - betas
-
-        return alphas, betas, baralphas
-
-    @property
-    def num_diffusion_steps(self):
-        return self._num_diffusion_steps
-
-    @num_diffusion_steps.setter
-    def num_diffusion_steps(self, new_num_diffusion_steps):
-        if isinstance(new_num_diffusion_steps, int):
-            self._num_diffusion_steps = new_num_diffusion_steps
-        else:
-            raise TypeError(f"num_diffusion_steps is not an {str(int)}.")
-
-    @property
-    def _linspace_diffusion_steps(self):
-        # One step more because starting point is not diffused.
-        return torch.linspace(
-            0, self.num_diffusion_steps, self.num_diffusion_steps + 1, dtype=torch.long
-        )
+        return diffused_starting_data
 
     def _get_noise_vector(self, shape: typing.Tuple[int, ...]) -> torch.Tensor:
         return torch.randn(*shape, device=self.device)
