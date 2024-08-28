@@ -126,6 +126,7 @@ class DiffPCFGANTrainer(Trainer):
             dim_seq=dim_seq,
             noise_start_seq_z=noise_start_seq_z,
         )
+        # WIP: add zero beginning of sequence but not crucial because we match partially the whole trajectory
         out = cat_linspace_times_4D(out)
         return out
 
@@ -166,8 +167,18 @@ class DiffPCFGANTrainer(Trainer):
 
         logger.debug("Targets for validation: %s", targets)
         diffused_targets: torch.Tensor = self._get_forward_path(targets, [1])
+        logger.debug(
+            "Diffused targets (transposed and flattened) for validation: %s",
+            diffused_targets.transpose(0, 1).flatten(2, 3),
+        )
+
         denoised_diffused_targets: torch.Tensor = self.get_backward_path(
             noise_start_seq_z=diffused_targets[-1]
+        )
+
+        logger.debug(
+            "Denoised samples (transposed and flattened) for validation: %s",
+            denoised_diffused_targets.transpose(0, 1).flatten(2, 3),
         )
 
         # TODO:: i am confused! `i` goes from 1 to num_diffusion_steps-1, so there is a missing step???
@@ -200,8 +211,17 @@ class DiffPCFGANTrainer(Trainer):
         optim_gen.zero_grad()
 
         diffused_targets: torch.Tensor = self._get_forward_path(targets, [1])
+        logger.debug(
+            "Diffused targets (transposed and flattened) for training: %s",
+            diffused_targets.transpose(0, 1).flatten(2, 3),
+        )
         denoised_diffused_targets: torch.Tensor = self.get_backward_path(
             noise_start_seq_z=diffused_targets[-1]
+        )
+
+        logger.debug(
+            "Denoised samples (transposed and flattened) for training: %s",
+            denoised_diffused_targets.transpose(0, 1).flatten(2, 3),
         )
 
         # TODO:: i am confused! `i` goes from 1 to num_diffusion_steps-1, so there is a missing step???
@@ -262,11 +282,6 @@ class DiffPCFGANTrainer(Trainer):
             self.diffusion_process.forward_sample(
                 starting_data[:, :, mask_where_diffuse]
             )
-        )
-
-        logger.debug(
-            "Diffused data transposed and sliced: %s",
-            diffused_starting_data.transpose(0, 1)[:, :, :, 0],
         )
         # Shape (S, N, L, D). This shape makes sense because we are interested in the tensor N,L,D by slices over S-dim.
         return diffused_starting_data

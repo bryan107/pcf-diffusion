@@ -25,14 +25,15 @@ class SwissRoll_Dataset(LightningDataModule):
         # Initialize the dataset with zeros
         train_data = torch.from_numpy(data).float().view(data_size, 1, data_dim)
 
-        # Add zero beginning sequences.
-        train_data = torch.cat(
-            (torch.zeros((data_size, 1, data_dim)), train_data), dim=1
-        )
+        ### No this is wrong. Do not add zero here but after sequences created.
+        # # Add zero beginning sequences.
+        # train_data = torch.cat(
+        #     (torch.zeros((data_size, 1, data_dim)), train_data), dim=1
+        # )
 
         # Add time dimension.
         train_data = torch.cat(
-            (train_data, torch.tensor([0, 1]).repeat(data_size, 1).unsqueeze(-1)), dim=2
+            (train_data, torch.tensor([0.0]).repeat(data_size, 1).unsqueeze(-1)), dim=2
         )
 
         self.inputs = train_data

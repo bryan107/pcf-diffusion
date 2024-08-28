@@ -57,7 +57,7 @@ config = {
     "Lambda2": 1,
     "gamma": 0.97,
     # WIP NUM ELEMENT IN SEQ?
-    "n_lags": 2,
+    "n_lags": data.inputs.shape[1],
     "batch_size": 10_000,
     "exp_dir": datamodel_path,
     "gan_algo": "PCFGAN",

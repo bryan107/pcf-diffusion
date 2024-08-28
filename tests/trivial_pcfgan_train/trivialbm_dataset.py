@@ -25,9 +25,7 @@ class TrivialBM_Dataset(LightningDataModule):
         train_data = torch.zeros((data_size, SEQ_LEN, NUM_FEATURES))
 
         # Set the first dimension of the last axis
-        train_data[:, :, 0] = torch.cat(
-            (torch.zeros((data_size, 1)), torch.randn((data_size, 1))), dim=1
-        )
+        train_data[:, :, 0] = torch.randn((data_size, 1))
 
         # Set the second dimension of the last axis
         train_data[:, :, 1] = torch.tensor([0, 1])
