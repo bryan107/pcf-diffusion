@@ -21,7 +21,11 @@ class ContinuousDiffusionProcess(nn.Module):
         # WIP I don't think this is used.
         schedule: str,
         sde_type: SDEType = SDEType.VP,
-        sde_info: Dict[SDEType, Dict[str, float]] = None,
+        sde_info: Dict[SDEType, Dict[str, float]] = {
+            "VP": {"beta_min": 0.1, "beta_max": 20},
+            "subVP": {"beta_min": 0.1, "beta_max": 20},
+            "VE": {"sigma_min": 0.01, "sigma_max": 50},
+        },
     ):
         """
         Initialize the ContinuousDiffusionProcess.
@@ -75,7 +79,7 @@ class ContinuousDiffusionProcess(nn.Module):
         Sample from the diffusion process using the backward SDE.
 
         Args:
-            noise (torch.Tensor): The initial noise.
+            noise (torch.Tensor): The noise final point of the equation, starting the backward equation.
             model (nn.Module): The model to predict the score.
 
         Returns:

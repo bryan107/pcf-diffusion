@@ -9,9 +9,15 @@ class TrigoTimeEmbedding(nn.Module):
     def __init__(self, embed_size, min_time: float = 0.0, max_time: float = 1.0):
         # Min and max time for scaling the time embeddings. If you want it to have no impact, set it to 0 and 1.
         super().__init__()
-        assert embed_size % 2 == 0, f"Embedding size must be even but got {embed_size:d}."
-        assert embed_size > 0, f"Embedding size must be positive but got {embed_size:d}."
-        assert min_time < max_time, f"Min time must be less than max time but got {min_time:.2f} and {max_time:.2f}."
+        assert (
+            embed_size % 2 == 0
+        ), f"Embedding size must be even but got {embed_size:d}."
+        assert (
+            embed_size > 0
+        ), f"Embedding size must be positive but got {embed_size:d}."
+        assert (
+            min_time < max_time
+        ), f"Min time must be less than max time but got {min_time:.2f} and {max_time:.2f}."
 
         self.embed_size = embed_size
         self.min_time = min_time
@@ -21,14 +27,20 @@ class TrigoTimeEmbedding(nn.Module):
 
         if self.learnable_weights:
             self.embedding_weights = nn.Linear(1, embed_size // 2, bias=False)
-            torch.nn.init.xavier_uniform_(self.embedding_weights.weight, gain=nn.init.calculate_gain('tanh'))
+            torch.nn.init.xavier_uniform_(
+                self.embedding_weights.weight, gain=nn.init.calculate_gain("tanh")
+            )
         else:
             # Parameter to be moved on device.
-            self.embedding_weights = nn.Parameter(self._create_embedding_weights(embed_size), requires_grad=False)
+            self.embedding_weights = nn.Parameter(
+                self._create_embedding_weights(embed_size), requires_grad=False
+            )
 
     def forward(self, times):
         # phi shape: (batch_size, Linput, embed_size // 2)
-        times = (times - self.min_time) / (self.max_time - self.min_time)  # normalise the time to be between 0 and 1
+        times = (times - self.min_time) / (
+            self.max_time - self.min_time
+        )  # normalise the time to be between 0 and 1
         if self.learnable_weights:
             phi = self.embedding_weights(times)
         else:
@@ -43,7 +55,12 @@ class TrigoTimeEmbedding(nn.Module):
     def _create_embedding_weights(d_model):
         return (
             torch.from_numpy(
-                np.array([TrigoTimeEmbedding._get_frequency_time_embed(j, d_model) for j in range(0, d_model, 2)])
+                np.array(
+                    [
+                        TrigoTimeEmbedding._get_frequency_time_embed(j, d_model)
+                        for j in range(0, d_model, 2)
+                    ]
+                )
             ).float()
             # Reshaping to be a matrix that increases number of dimensions.
             .reshape(1, -1)
