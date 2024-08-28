@@ -49,7 +49,7 @@ config = {
     "num_epochs": 501,
     "G_input_dim": 3,
     "G_hidden_dim": 32,
-    "input_dim": 3,
+    "input_dim": data.inputs.shape[2],
     "M_num_samples": 8,
     "M_hidden_dim": 6,
     "lr_M": 0.005,

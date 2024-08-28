@@ -12,7 +12,7 @@ class SwissRoll_Dataset(LightningDataModule):
         self.use_2D_otherwise_3D = use_2D_otherwise_3D
 
         data, _ = make_swiss_roll(n_samples=data_size, noise=0.5)
-        data = (data - data.mean()) / data.std()
+        data = (data - data.mean(0)) / data.std(0)
 
         if use_2D_otherwise_3D:
             # If 2D, select only the first and third columns (x and z axes).
@@ -30,11 +30,10 @@ class SwissRoll_Dataset(LightningDataModule):
         # train_data = torch.cat(
         #     (torch.zeros((data_size, 1, data_dim)), train_data), dim=1
         # )
-
-        # Add time dimension.
-        train_data = torch.cat(
-            (train_data, torch.tensor([0.0]).repeat(data_size, 1).unsqueeze(-1)), dim=2
-        )
+        # # Add time dimension.
+        # train_data = torch.cat(
+        #     (train_data, torch.tensor([0.0]).repeat(data_size, 1).unsqueeze(-1)), dim=2
+        # )
 
         self.inputs = train_data
         self.batch_size = 1_000_000
@@ -66,14 +65,14 @@ class SwissRoll_Dataset(LightningDataModule):
         if self.use_2D_otherwise_3D:
             # Plot for 2D data
             plt.scatter(
-                train_data_np[:, 1, 0],
-                train_data_np[:, 1, 1],
+                train_data_np[:, 0, 0],
+                train_data_np[:, 0, 1],
                 c="b",
                 label="Train Data",
             )
             plt.scatter(
-                val_data_np[:, 1, 0],
-                val_data_np[:, 1, 1],
+                val_data_np[:, 0, 0],
+                val_data_np[:, 0, 1],
                 c="r",
                 label="Validation Data",
             )
@@ -83,16 +82,16 @@ class SwissRoll_Dataset(LightningDataModule):
             # Plot for 3D data
             ax = plt.axes(projection="3d")
             ax.scatter(
-                train_data_np[:, 1, 0],
-                train_data_np[:, 1, 1],
-                train_data_np[:, 1, 2],
+                train_data_np[:, 0, 0],
+                train_data_np[:, 0, 1],
+                train_data_np[:, 0, 2],
                 c="b",
                 label="Train Data",
             )
             ax.scatter(
-                val_data_np[:, 1, 0],
-                val_data_np[:, 1, 1],
-                val_data_np[:, 1, 2],
+                val_data_np[:, 0, 0],
+                val_data_np[:, 0, 1],
+                val_data_np[:, 0, 2],
                 c="r",
                 label="Validation Data",
             )

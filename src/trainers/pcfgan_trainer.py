@@ -105,7 +105,7 @@ class PCFGANTrainer(Trainer):
             seq_len=targets.shape[1],
         )
         loss_gen = self.discriminator.distance_measure(
-            targets, fake_samples, Lambda=0.1
+            targets, fake_samples, lambda_y=0.1
         )
 
         self.log(
@@ -133,7 +133,7 @@ class PCFGANTrainer(Trainer):
             seq_len=targets.shape[1],
         )
         loss_gen = self.discriminator.distance_measure(
-            targets, fake_samples, Lambda=0.1
+            targets, fake_samples, lambda_y=0.1
         )
 
         self.manual_backward(loss_gen)
@@ -149,7 +149,7 @@ class PCFGANTrainer(Trainer):
                 seq_len=targets.shape[1],
             )
         loss_disc = -self.discriminator.distance_measure(
-            targets, fake_samples, Lambda=0.1
+            targets, fake_samples, lambda_y=0.1
         )
         self.manual_backward(loss_disc)
         optim_discr.step()

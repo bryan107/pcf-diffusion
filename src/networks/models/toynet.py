@@ -13,7 +13,7 @@ class ToyNet(nn.Module):
     # Model for diffusion where you pass the data (x) and the time step of the diffusion (t).
     def __init__(self, data_dim):
         super().__init__()
-        self.time_embed_dim = 128
+        self.time_embed_dim = 16
         dim = 256
         out_dim = data_dim
 

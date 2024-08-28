@@ -76,7 +76,7 @@ class PCF_with_empirical_measure(nn.Module):
         return (torch.einsum("bii->b", D)).mean().real
 
     def distance_measure(
-        self, X1: torch.tensor, X2: torch.tensor, Lambda=0.1
+        self, X1: torch.tensor, X2: torch.tensor, lambda_y=0.1
     ) -> torch.float:
         """
         TODO: this description is just not true.
@@ -85,7 +85,7 @@ class PCF_with_empirical_measure(nn.Module):
         Args:
             X1 (torch.tensor): Time series samples with shape (N_1, T, d).
             X2 (torch.tensor): Time series samples with shape (N_2, T, d).
-            Lambda (float, optional): Scaling factor for additional distance measure on the initial time point,
+            lambda_y (float, optional): Scaling factor for additional distance measure on the initial time point,
             this is found helpful for learning distribution of initial time point.
               Defaults to 0.1.
 
@@ -107,7 +107,7 @@ class PCF_with_empirical_measure(nn.Module):
             mean_unitary_development_X_1 - mean_unitary_development_X_2
         )
 
-        if Lambda != 0:
+        if lambda_y != 0:
             initial_incre_X1 = torch.cat(
                 [torch.zeros((N, 1, d)).to(X1.device), X1[:, 0, :].unsqueeze(1)], dim=1
             )
@@ -118,7 +118,7 @@ class PCF_with_empirical_measure(nn.Module):
             initial_CF_2 = self.unitary_development(initial_incre_X2).mean(0)
             return self.HS_norm(
                 diff_characteristic_function, diff_characteristic_function
-            ) + Lambda * self.HS_norm(
+            ) + lambda_y * self.HS_norm(
                 initial_CF_1 - initial_CF_2, initial_CF_1 - initial_CF_2
             )
         else:

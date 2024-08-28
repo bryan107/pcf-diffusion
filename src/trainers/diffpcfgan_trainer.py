@@ -84,7 +84,7 @@ class DiffPCFGANTrainer(Trainer):
         noise_start_seq_z: typing.Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         # Alias for forward for clarity
-        return self(num_seq, seq_len, dim_seq, noise_start_seq_z)
+        return self.augmented_forward(num_seq, seq_len, dim_seq, noise_start_seq_z)
 
     def forward(
         self,
@@ -166,14 +166,14 @@ class DiffPCFGANTrainer(Trainer):
         (targets,) = batch
 
         logger.debug("Targets for validation: %s", targets)
-        diffused_targets: torch.Tensor = self._get_forward_path(targets, [1])
+        diffused_targets: torch.Tensor = self._get_forward_path(targets, [])
         logger.debug(
             "Diffused targets (transposed and flattened) for validation: %s",
             diffused_targets.transpose(0, 1).flatten(2, 3),
         )
 
         denoised_diffused_targets: torch.Tensor = self.get_backward_path(
-            noise_start_seq_z=diffused_targets[-1]
+            noise_start_seq_z=diffused_targets[-1, :, :, :-1]
         )
 
         logger.debug(
@@ -210,13 +210,13 @@ class DiffPCFGANTrainer(Trainer):
     def _training_step_gen(self, optim_gen, targets: torch.Tensor) -> float:
         optim_gen.zero_grad()
 
-        diffused_targets: torch.Tensor = self._get_forward_path(targets, [1])
+        diffused_targets: torch.Tensor = self._get_forward_path(targets, [])
         logger.debug(
             "Diffused targets (transposed and flattened) for training: %s",
             diffused_targets.transpose(0, 1).flatten(2, 3),
         )
         denoised_diffused_targets: torch.Tensor = self.get_backward_path(
-            noise_start_seq_z=diffused_targets[-1]
+            noise_start_seq_z=diffused_targets[-1, :, :, :-1]
         )
 
         logger.debug(
@@ -239,11 +239,11 @@ class DiffPCFGANTrainer(Trainer):
     def _training_step_disc(self, optim_discr, targets: torch.Tensor) -> float:
         optim_discr.zero_grad()
 
-        diffused_targets: torch.Tensor = self._get_forward_path(targets, [1])
+        diffused_targets: torch.Tensor = self._get_forward_path(targets, [])
 
         with torch.no_grad():
             denoised_diffused_targets: torch.Tensor = self.get_backward_path(
-                noise_start_seq_z=diffused_targets[-1]
+                noise_start_seq_z=diffused_targets[-1, :, :, :-1]
             )
 
         # WIP: Hardcoded lengths of diffusion sequence to consider.
@@ -261,7 +261,7 @@ class DiffPCFGANTrainer(Trainer):
         self,
         starting_data: torch.Tensor,
         # Ignore features to be diffused with a hack here.
-        indices_features_not_diffuse: typing.Iterable = [1],
+        indices_features_not_diffuse: typing.Iterable = [-1],
     ) -> torch.Tensor:
         # To get the totally noised data, use: output[-1, :, :, :]
 
@@ -283,8 +283,28 @@ class DiffPCFGANTrainer(Trainer):
                 starting_data[:, :, mask_where_diffuse]
             )
         )
-        # Shape (S, N, L, D). This shape makes sense because we are interested in the tensor N,L,D by slices over S-dim.
-        return diffused_starting_data
+
+        # Add the times to the data by creating a linspace between 0,1 and which is repeated for all (N,L).
+        diffusion_times = (
+            torch.linspace(
+                0.0,
+                1.0,
+                steps=diffused_starting_data.shape[2],
+                device=starting_data.device,
+            )
+            .view(-1, 1, 1, 1)
+            .expand(
+                diffused_starting_data.shape[0],
+                diffused_starting_data.shape[1],
+                diffused_starting_data.shape[2],
+                1,
+            )
+        )
+        diffused_starting_data_with_times = torch.cat(
+            (diffused_starting_data, diffusion_times), dim=-1
+        )
+        # Shape (S, N, L, D+1). This shape makes sense because we are interested in the tensor N,L,D by slices over S-dim.
+        return diffused_starting_data_with_times
 
     def _get_noise_vector(self, shape: typing.Tuple[int, ...]) -> torch.Tensor:
         return torch.randn(*shape, device=self.device)
