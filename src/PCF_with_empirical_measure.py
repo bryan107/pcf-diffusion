@@ -31,6 +31,8 @@ class PCF_with_empirical_measure(nn.Module):
         self.hidden_size = hidden_size
         self.input_size = input_size
         self.add_time = add_time
+        if self.add_time:
+            self.input_size += 1
         self.unitary_development = UnitaryDevelopmentLayer(
             input_size=self.input_size,
             hidden_size=self.hidden_size,
