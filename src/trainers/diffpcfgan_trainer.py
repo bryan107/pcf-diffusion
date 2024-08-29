@@ -37,6 +37,12 @@ class DiffPCFGANTrainer(Trainer):
         # Merge the sequence dimension (dim 2) and the feature dimension (dim 3) into a single dimension.
         # Flattening is required before adding time otherwise we would add too many dimensions with the time.
         data = data.flatten(2, 3)
+
+        # Add a zero at the beginning of the sequence. By adding it before time simplifies time augmentation.
+        # WIP MOVE THIS
+        zeros = torch.zeros(1, data.shape[1], data.shape[2], device=data.device)
+        data = torch.cat((zeros, data), dim=0)
+
         # Add the times to the data by creating a linspace between 0,1 and which is repeated for all (N,L).
         diffusion_times = (
             torch.linspace(
@@ -57,11 +63,6 @@ class DiffPCFGANTrainer(Trainer):
         data = data.transpose(
             0, 1
         )  # adding contiguous slows down the code tremendously.
-
-        # Add a zero at the beginning of the sequence.
-        # WIP MOVE THIS
-        zeros = torch.zeros(data.shape[0], 1, data.shape[2], device=data.device)
-        data = torch.cat((zeros, data), dim=1)
         return data
 
     def __init__(
