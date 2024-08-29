@@ -148,7 +148,7 @@ class ContinuousDiffusionProcess(nn.Module):
 
         if clip_denoised and x_t.ndim > 2:
             # TODO 29/08/2024 nie_k:  Why was there a clamp at -1,1?
-            x_prev = x_prev.clamp(-3.0, 3.0)
+            x_prev = x_prev.clamp(-5.0, 5.0)
 
         return x_prev
 

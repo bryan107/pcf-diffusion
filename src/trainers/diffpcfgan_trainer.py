@@ -23,7 +23,9 @@ PERIOD_PLOT_VAL = 5
 sns.set()
 
 PLOT_DIFFUSION_FIG, PLOT_DIFFUSION_AXES = plt.subplots(1, 2, sharey=True)
-NUM_STEPS_DIFFUSION_2_CONSIDER = 2
+NUM_STEPS_DIFFUSION_2_CONSIDER = 4
+# Adding 1 for the zero at the beginning.
+NUM_STEPS_DIFFUSION_2_CONSIDER += 1
 
 
 class DiffPCFGANTrainer(Trainer):
@@ -157,8 +159,8 @@ class DiffPCFGANTrainer(Trainer):
             noise_start_seq_z=diffused_targets[-1]
         )
 
-        diffused_targets = self.flatten_seqs_feats_and_add_time(diffused_targets)
-        denoised_diffused_targets = self.flatten_seqs_feats_and_add_time(
+        diffused_targets = self._flat_add_time_transpose_and_add_zero(diffused_targets)
+        denoised_diffused_targets = self._flat_add_time_transpose_and_add_zero(
             denoised_diffused_targets
         )
         logger.debug(
@@ -193,7 +195,7 @@ class DiffPCFGANTrainer(Trainer):
                 self.output_dir_images
                 + f"pred_vs_true_epoch_{str(self.current_epoch + 1)}"
             )
-            self.evaluate(denoised_diffused_targets[:, 0, :-1], targets[:, 0], path)
+            self.evaluate(denoised_diffused_targets[:, 1, :-1], targets[:, 0], path)
 
             denoised_diffused_targets = denoised_diffused_targets.detach().cpu().numpy()
             diffused_targets = diffused_targets.detach().cpu().numpy()
@@ -201,23 +203,33 @@ class DiffPCFGANTrainer(Trainer):
             PLOT_DIFFUSION_AXES[0].clear()
             PLOT_DIFFUSION_AXES[1].clear()
 
-            diffusion_steps = np.arange(0, denoised_diffused_targets.shape[1])
+            # Shift by one because we add a trailing zero.
+            diffusion_steps = np.arange(-1, denoised_diffused_targets.shape[1] - 1)
             for element_dataset in range(diffused_targets.shape[0]):
                 PLOT_DIFFUSION_AXES[0].plot(
                     diffusion_steps,
                     diffused_targets[element_dataset, :, 0],
                     linewidth=1.0,
                 )
-                PLOT_DIFFUSION_AXES[0].set_title("forward")
-                PLOT_DIFFUSION_AXES[0].set_xlabel("Diffusion Step")
+            PLOT_DIFFUSION_AXES[0].set_title("forward")
+            PLOT_DIFFUSION_AXES[0].set_xlabel("Diffusion Step")
             for element_dataset in range(denoised_diffused_targets.shape[0]):
                 PLOT_DIFFUSION_AXES[1].plot(
-                    diffusion_steps,
+                    diffusion_steps[::-1],
                     denoised_diffused_targets[element_dataset, :, 0],
                     linewidth=1.0,
                 )
-                PLOT_DIFFUSION_AXES[1].set_title("backward")
-                PLOT_DIFFUSION_AXES[1].set_xlabel("Diffusion Step")
+            # Reverse the x-ticks and labels
+            # WIP: might lead to too many ticks. See how to handle that.
+            PLOT_DIFFUSION_AXES[0].set_xticks(diffusion_steps)
+            PLOT_DIFFUSION_AXES[0].set_xticklabels(diffusion_steps)
+            PLOT_DIFFUSION_AXES[1].set_xticks(diffusion_steps[::-1])
+            PLOT_DIFFUSION_AXES[1].set_xticklabels(diffusion_steps)
+            PLOT_DIFFUSION_AXES[1].set_title("backward")
+            PLOT_DIFFUSION_AXES[1].set_xlabel("Diffusion Step")
+            PLOT_DIFFUSION_FIG.suptitle(
+                f"Comparison Diffusion Trajectories for n={diffused_targets.shape[0]}"
+            )
 
         return
 
@@ -229,8 +241,8 @@ class DiffPCFGANTrainer(Trainer):
             noise_start_seq_z=diffused_targets[-1]
         )
 
-        diffused_targets = self.flatten_seqs_feats_and_add_time(diffused_targets)
-        denoised_diffused_targets = self.flatten_seqs_feats_and_add_time(
+        diffused_targets = self._flat_add_time_transpose_and_add_zero(diffused_targets)
+        denoised_diffused_targets = self._flat_add_time_transpose_and_add_zero(
             denoised_diffused_targets
         )
         logger.debug(
@@ -261,8 +273,10 @@ class DiffPCFGANTrainer(Trainer):
             denoised_diffused_targets: torch.Tensor = self.get_backward_path(
                 noise_start_seq_z=diffused_targets[-1]
             )
-            diffused_targets = self.flatten_seqs_feats_and_add_time(diffused_targets)
-            denoised_diffused_targets = self.flatten_seqs_feats_and_add_time(
+            diffused_targets = self._flat_add_time_transpose_and_add_zero(
+                diffused_targets
+            )
+            denoised_diffused_targets = self._flat_add_time_transpose_and_add_zero(
                 denoised_diffused_targets
             )
 
@@ -310,7 +324,7 @@ class DiffPCFGANTrainer(Trainer):
     def _get_noise_vector(self, shape: typing.Tuple[int, ...]) -> torch.Tensor:
         return torch.randn(*shape, device=self.device)
 
-    def flatten_seqs_feats_and_add_time(self, data: torch.Tensor) -> torch.Tensor:
+    def _flat_add_time_transpose_and_add_zero(self, data: torch.Tensor) -> torch.Tensor:
         # WIP: add zero beginning of sequence but not crucial because we match partially the whole trajectory
 
         # Merge the sequence dimension (dim 2) and the feature dimension (dim 3) into a single dimension.
@@ -336,4 +350,8 @@ class DiffPCFGANTrainer(Trainer):
         data = data.transpose(
             0, 1
         )  # adding contiguous slows down the code tremendously.
+
+        # Add a zero at the beginning of the sequence.
+        zeros = torch.zeros(data.shape[0], 1, data.shape[2], device=data.device)
+        data = torch.cat((zeros, data), dim=1)
         return data
