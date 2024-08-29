@@ -3,18 +3,17 @@ import time
 
 import numpy as np
 import seaborn as sns
-import torch.nn as nn
 from matplotlib import pyplot as plt
 from pytorch_lightning import seed_everything, Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
 from src.logger.init_logger import set_config_logging
+from src.networks.models.toynet import ToyNet
 
 set_config_logging()
 logger = logging.getLogger(__name__)
 
 from config import ROOT_DIR
-from src.networks.models.lstmgenerator_diffusion import LSTMGenerator_Diffusion
 from src.trainers.diffpcfgan_trainer import DiffPCFGANTrainer
 from src.utils.progressbarwithoutvalbatchupdate import ProgressbarWithoutValBatchUpdate
 from src.utils.traininghistorylogger import TrainingHistoryLogger
@@ -29,7 +28,7 @@ path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/trivial_pcfgan_train
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
 filename_model_saved = "pcfgan_1"
 
-data = TrivialBM_Dataset(5_00)
+data = TrivialBM_Dataset(2_000)
 
 
 class Config:
@@ -42,27 +41,18 @@ class Config:
 
 config = {
     "device": "cuda",
-    "add_time": False,
-    "lr_G": 0.01,
-    "lr_D": 0.01,
-    "D_steps_per_G_step": 2,
-    # NUM EPOCHS
+    "lr_G": 0.001,
+    "lr_D": 0.001,
+    "D_steps_per_G_step": 1,
     "num_epochs": 501,
     "G_input_dim": 2,
     "G_hidden_dim": 32,
-    "input_dim": 2,
-    "M_num_samples": 8,
-    "M_hidden_dim": 6,
-    "lr_M": 0.005,
-    "Lambda1": 50,
-    "Lambda2": 1,
-    "gamma": 0.97,
+    "input_dim": data.inputs.shape[2],
+    "M_num_samples": 16,
+    "M_hidden_dim": 12,
     # WIP NUM ELEMENT IN SEQ?
-    "n_lags": 2,
-    "batch_size": 10_000,
+    "n_lags": data.inputs.shape[1],
     "exp_dir": datamodel_path,
-    "gan_algo": "PCFGAN",
-    "swa_step_start": 25000,
 }
 config = Config(config)
 
@@ -106,33 +96,33 @@ trainer = Trainer(
 )
 
 logger.info("Creating the model.")
-lstm_generator = LSTMGenerator_Diffusion(
-    input_dim=config.input_dim,
-    ###Be careful, because of the operations we do, this is actually, a function. See how to do it better.
-    output_dim=(config.input_dim - 1),
-    seq_len=config.n_lags,
-    hidden_dim=32,
-    n_layers=1,
-    noise_scale=1.0,
-    BM=True,
-    activation=nn.Identity(),
-)
-model = (
-    # PCFGANTrainer(
-    DiffPCFGANTrainer(
-        generator=lstm_generator,
-        config=config,
-        learning_rate_gen=config.lr_G,
-        learning_rate_disc=config.lr_D,
-        num_D_steps_per_G_step=config.D_steps_per_G_step,
-        num_samples_pcf=config.M_num_samples,
-        hidden_dim_pcf=config.M_hidden_dim,
-        num_diffusion_steps=32,
-        # wip: THESE TWO SEEM UNUSED??
-        test_metrics_train=None,
-        test_metrics_test=None,
-        # WIP I THINK BATCH SIZE DOES SMTHG DIFFERENT
-    )
+####### Artefact
+# lstm_generator = LSTMGenerator_Diffusion(
+#     input_dim=config.input_dim,
+#     ###Be careful, because of the operations we do, this is actually, a function. See how to do it better.
+#     output_dim=(config.input_dim - 1),
+#     seq_len=config.n_lags,
+#     hidden_dim=32,
+#     n_layers=1,
+#     noise_scale=1.0,
+#     BM=True,
+#     activation=nn.Identity(),
+# )
+###########
+score_network = ToyNet(data_dim=config.input_dim)
+model = DiffPCFGANTrainer(
+    score_network=score_network,
+    config=config,
+    learning_rate_gen=config.lr_G,
+    learning_rate_disc=config.lr_D,
+    num_D_steps_per_G_step=config.D_steps_per_G_step,
+    num_samples_pcf=config.M_num_samples,
+    hidden_dim_pcf=config.M_hidden_dim,
+    num_diffusion_steps=8,
+    # wip: THESE TWO SEEM UNUSED??
+    test_metrics_train=None,
+    test_metrics_test=None,
+    # WIP I THINK BATCH SIZE DOES SMTHG DIFFERENT
 )
 logger.info("Model created.")
 

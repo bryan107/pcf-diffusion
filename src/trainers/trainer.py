@@ -6,6 +6,7 @@ from collections import defaultdict
 from os import path as pt
 
 import matplotlib.pyplot as plt
+import seaborn as sns
 import torch
 from matplotlib.lines import Line2D
 from pytorch_lightning import LightningModule
@@ -44,7 +45,57 @@ class Trainer(LightningModule):
         for i in range(len(self.plot_samples.axes)):
             self.plot_samples.axes[i].clear()
 
-        self.plot_swiss_roll(x_real, x_fake, self.plot_samples, path_file)
+        warnings.warn(
+            "Is it the correct plotting method? Otherwise it might be either ugly or fail."
+        )
+        # self.plot_swiss_roll(x_real, x_fake, self.plot_samples, path_file)
+        self.plot_histograms(x_real, x_fake, self.plot_samples, path_file)
+        return
+
+    @staticmethod
+    def plot_histograms(real_X, fake_X, fig, path_file: str):
+        assert (
+            real_X.shape[-1] == fake_X.shape[-1]
+        ), "Data should have the same sizes, but got {} and {}".format(
+            real_X.shape[-1], fake_X.shape[-1]
+        )
+        assert (
+            len(real_X.shape) == 2
+        ), "Data should have 2 dimensions, but got {}".format(len(real_X.shape))
+        assert (
+            len(fake_X.shape) == 2
+        ), "Data should have 2 dimensions, but got {}".format(len(fake_X.shape))
+
+        random_indices = torch.randint(real_X.shape[0], (real_X.shape[0],))
+
+        sns.distplot(
+            real_X[random_indices, 0].detach().cpu().numpy(),
+            kde=True,
+            color="blue",
+            label="Real Data",
+            hist=True,
+        )
+
+        sns.distplot(
+            fake_X[random_indices, 0].detach().cpu().numpy(),
+            kde=True,
+            color="red",
+            label="Sampled Data",
+            hist=True,
+        )
+        plt.pause(0.1)
+        plt.title("Histogram with KDE for Train and Validation Data")
+        plt.xlabel("Value")
+        plt.ylabel("Density")
+        plt.legend()
+
+        directory_where_to_save = os.path.dirname(path_file)
+        if not os.path.exists(directory_where_to_save):
+            if directory_where_to_save != "":
+                os.makedirs(directory_where_to_save)
+        fig.savefig(pt.join(path_file))
+
+        plt.pause(0.01)
         return
 
     @staticmethod
@@ -58,11 +109,11 @@ class Trainer(LightningModule):
             real_X.shape[-1], fake_X.shape[-1]
         )
         assert (
-            len(real_X.shape) == 3
-        ), "Data should have 3 dimensions, but got {}".format(len(real_X.shape))
+            len(real_X.shape) == 2
+        ), "Data should have 2 dimensions, but got {}".format(len(real_X.shape))
         assert (
-            len(fake_X.shape) == 3
-        ), "Data should have 3 dimensions, but got {}".format(len(fake_X.shape))
+            len(fake_X.shape) == 2
+        ), "Data should have 2 dimensions, but got {}".format(len(fake_X.shape))
         assert len(fig.axes) == real_X.shape[-1] - 1, (
             "Number of subplots should be equal to the number of dimensions of the last axis of the data minus 1, "
             "but got {} and {}"
@@ -114,10 +165,10 @@ class Trainer(LightningModule):
         )
         assert (
             len(real_X.shape) == 2
-        ), "Data should have 3 dimensions, but got {}".format(len(real_X.shape))
+        ), "Data should have 2 dimensions, but got {}".format(len(real_X.shape))
         assert (
             len(fake_X.shape) == 2
-        ), "Data should have 3 dimensions, but got {}".format(len(fake_X.shape))
+        ), "Data should have 2 dimensions, but got {}".format(len(fake_X.shape))
 
         random_indices = torch.randint(real_X.shape[0], (real_X.shape[0],))
 

@@ -41,20 +41,17 @@ class Config:
 
 config = {
     "device": "cuda",
-    "add_time": False,
-    "lr_G": 0.01,
-    "lr_D": 0.01,
-    "D_steps_per_G_step": 2,
-    # NUM EPOCHS
+    "lr_G": 0.001,
+    "lr_D": 0.001,
+    "D_steps_per_G_step": 1,
     "num_epochs": 501,
     "G_input_dim": 3,
     "G_hidden_dim": 32,
     "input_dim": data.inputs.shape[2],
-    "M_num_samples": 8,
+    "M_num_samples": 16,
     "M_hidden_dim": 12,
     # WIP NUM ELEMENT IN SEQ?
     "n_lags": data.inputs.shape[1],
-    "batch_size": 10_000,
     "exp_dir": datamodel_path,
 }
 config = Config(config)
@@ -121,7 +118,7 @@ model = DiffPCFGANTrainer(
     num_D_steps_per_G_step=config.D_steps_per_G_step,
     num_samples_pcf=config.M_num_samples,
     hidden_dim_pcf=config.M_hidden_dim,
-    num_diffusion_steps=32,
+    num_diffusion_steps=8,
     # wip: THESE TWO SEEM UNUSED??
     test_metrics_train=None,
     test_metrics_test=None,
