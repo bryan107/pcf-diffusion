@@ -51,17 +51,11 @@ config = {
     "G_hidden_dim": 32,
     "input_dim": data.inputs.shape[2],
     "M_num_samples": 8,
-    "M_hidden_dim": 6,
-    "lr_M": 0.005,
-    "Lambda1": 50,
-    "Lambda2": 1,
-    "gamma": 0.97,
+    "M_hidden_dim": 12,
     # WIP NUM ELEMENT IN SEQ?
     "n_lags": data.inputs.shape[1],
     "batch_size": 10_000,
     "exp_dir": datamodel_path,
-    "gan_algo": "PCFGAN",
-    "swa_step_start": 25000,
 }
 config = Config(config)
 

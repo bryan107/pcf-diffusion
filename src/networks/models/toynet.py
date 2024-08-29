@@ -14,11 +14,11 @@ class ToyNet(nn.Module):
     def __init__(self, data_dim):
         super().__init__()
         self.input_dim = data_dim
-        self.hidden_dim = 256
+        self.hidden_dim = 128
         self.time_embed_dim = 16
         out_dim = data_dim
 
-        self.trigotime_embed = TrigoTimeEmbedding(self.time_embed_dim)
+        self.trigotime_embed = TrigoTimeEmbedding(self.time_embed_dim, 0, 33)
         self.data_resnet = ResNet_FC(self.input_dim, self.hidden_dim, num_res_blocks=3)
 
         # Transforms time embeddings

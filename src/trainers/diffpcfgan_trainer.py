@@ -1,6 +1,9 @@
 import logging
 import typing
 
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
 import torch
 import torch.nn as nn
 
@@ -17,6 +20,10 @@ logger = logging.getLogger(__name__)
 # TODO 12/08/2024 nie_k: Alternative plot for swiss roll.
 
 PERIOD_PLOT_VAL = 5
+sns.set()
+
+PLOT_DIFFUSION_FIG, PLOT_DIFFUSION_AXES = plt.subplots(1, 2, sharey=True)
+NUM_STEPS_DIFFUSION_2_CONSIDER = 2
 
 
 class DiffPCFGANTrainer(Trainer):
@@ -166,8 +173,8 @@ class DiffPCFGANTrainer(Trainer):
         loss_gen = self.discriminator.distance_measure(
             # WIP: Hardcoded lengths of diffusion sequence to consider.
             # Slice to keep only 20 steps, because anyway the PCF can't capture long time sequences.
-            diffused_targets[:, :16],
-            denoised_diffused_targets[:, :16],
+            diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
+            denoised_diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
             lambda_y=0.1,
         )
 
@@ -187,6 +194,31 @@ class DiffPCFGANTrainer(Trainer):
                 + f"pred_vs_true_epoch_{str(self.current_epoch + 1)}"
             )
             self.evaluate(denoised_diffused_targets[:, 0, :-1], targets[:, 0], path)
+
+            denoised_diffused_targets = denoised_diffused_targets.detach().cpu().numpy()
+            diffused_targets = diffused_targets.detach().cpu().numpy()
+
+            PLOT_DIFFUSION_AXES[0].clear()
+            PLOT_DIFFUSION_AXES[1].clear()
+
+            diffusion_steps = np.arange(0, denoised_diffused_targets.shape[1])
+            for element_dataset in range(diffused_targets.shape[0]):
+                PLOT_DIFFUSION_AXES[0].plot(
+                    diffusion_steps,
+                    diffused_targets[element_dataset, :, 0],
+                    linewidth=1.0,
+                )
+                PLOT_DIFFUSION_AXES[0].set_title("forward")
+                PLOT_DIFFUSION_AXES[0].set_xlabel("Diffusion Step")
+            for element_dataset in range(denoised_diffused_targets.shape[0]):
+                PLOT_DIFFUSION_AXES[1].plot(
+                    diffusion_steps,
+                    denoised_diffused_targets[element_dataset, :, 0],
+                    linewidth=1.0,
+                )
+                PLOT_DIFFUSION_AXES[1].set_title("backward")
+                PLOT_DIFFUSION_AXES[1].set_xlabel("Diffusion Step")
+
         return
 
     def _training_step_gen(self, optim_gen, targets: torch.Tensor) -> float:
@@ -212,8 +244,8 @@ class DiffPCFGANTrainer(Trainer):
 
         loss_gen = self.discriminator.distance_measure(
             # WIP: Hardcoded lengths of diffusion sequence to consider.
-            diffused_targets[:, :16],
-            denoised_diffused_targets[:, :16],
+            diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
+            denoised_diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
             lambda_y=0.1,
         )
 
@@ -236,8 +268,8 @@ class DiffPCFGANTrainer(Trainer):
 
         # WIP: Hardcoded lengths of diffusion sequence to consider.
         loss_disc = -self.discriminator.distance_measure(
-            diffused_targets[:, :16],
-            denoised_diffused_targets[:, :16],
+            diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
+            denoised_diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
             lambda_y=0.1,
         )
         self.manual_backward(loss_disc)
