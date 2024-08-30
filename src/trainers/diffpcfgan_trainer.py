@@ -237,41 +237,50 @@ class DiffPCFGANTrainer(Trainer):
             )
             self.evaluate(denoised_diffused_targets[:, 1, :-1], targets[:, 0], path)
 
-            denoised_diffused_targets = denoised_diffused_targets.detach().cpu().numpy()
-            diffused_targets = diffused_targets.detach().cpu().numpy()
-
-            PLOT_DIFFUSION_AXES[0].clear()
-            PLOT_DIFFUSION_AXES[1].clear()
-
-            # Shift by one because we add a trailing zero.
-            diffusion_steps = np.arange(-1, denoised_diffused_targets.shape[1] - 1)
-            for element_dataset in range(diffused_targets.shape[0]):
-                PLOT_DIFFUSION_AXES[0].plot(
-                    diffusion_steps,
-                    diffused_targets[element_dataset, :, 0],
-                    linewidth=1.0,
-                )
-            PLOT_DIFFUSION_AXES[0].set_title("forward")
-            PLOT_DIFFUSION_AXES[0].set_xlabel("Diffusion Step")
-            for element_dataset in range(denoised_diffused_targets.shape[0]):
-                PLOT_DIFFUSION_AXES[1].plot(
-                    diffusion_steps[::-1],
-                    denoised_diffused_targets[element_dataset, :, 0],
-                    linewidth=1.0,
-                )
-            # Reverse the x-ticks and labels
-            # WIP: might lead to too many ticks. See how to handle that.
-            PLOT_DIFFUSION_AXES[0].set_xticks(diffusion_steps)
-            PLOT_DIFFUSION_AXES[0].set_xticklabels(diffusion_steps)
-            PLOT_DIFFUSION_AXES[1].set_xticks(diffusion_steps[::-1])
-            PLOT_DIFFUSION_AXES[1].set_xticklabels(diffusion_steps)
-            PLOT_DIFFUSION_AXES[1].set_title("backward")
-            PLOT_DIFFUSION_AXES[1].set_xlabel("Diffusion Step")
-            PLOT_DIFFUSION_FIG.suptitle(
-                f"Comparison Diffusion Trajectories for n={diffused_targets.shape[0]}. \nThe distribution are matched over the {NUM_STEPS_DIFFUSION_2_CONSIDER} first steps."
+            self.plot_for_back_ward_trajectories(
+                denoised_diffused_targets, diffused_targets
             )
-            PLOT_DIFFUSION_FIG.tight_layout()
 
+        return
+
+    def plot_for_back_ward_trajectories(
+        self, denoised_diffused_targets, diffused_targets
+    ):
+        denoised_diffused_targets = denoised_diffused_targets.detach().cpu().numpy()
+        diffused_targets = diffused_targets.detach().cpu().numpy()
+
+        PLOT_DIFFUSION_AXES[0].clear()
+        PLOT_DIFFUSION_AXES[1].clear()
+
+        # Shift by one because we added a trailing zero to the sequences.
+        diffusion_steps = np.arange(-1, denoised_diffused_targets.shape[1] - 1)
+
+        for element_dataset in range(diffused_targets.shape[0]):
+            PLOT_DIFFUSION_AXES[0].plot(
+                diffusion_steps,
+                diffused_targets[element_dataset, :, 0],
+                linewidth=1.0,
+            )
+        PLOT_DIFFUSION_AXES[0].set_title("forward")
+        PLOT_DIFFUSION_AXES[0].set_xlabel("Diffusion Step")
+        for element_dataset in range(denoised_diffused_targets.shape[0]):
+            PLOT_DIFFUSION_AXES[1].plot(
+                diffusion_steps[::-1],
+                denoised_diffused_targets[element_dataset, :, 0],
+                linewidth=1.0,
+            )
+        # Reverse the x-ticks and labels
+        # WIP: might lead to too many ticks. See how to handle that.
+        PLOT_DIFFUSION_AXES[0].set_xticks(diffusion_steps)
+        PLOT_DIFFUSION_AXES[0].set_xticklabels(diffusion_steps)
+        PLOT_DIFFUSION_AXES[1].set_xticks(diffusion_steps[::-1])
+        PLOT_DIFFUSION_AXES[1].set_xticklabels(diffusion_steps)
+        PLOT_DIFFUSION_AXES[1].set_title("backward")
+        PLOT_DIFFUSION_AXES[1].set_xlabel("Diffusion Step")
+        PLOT_DIFFUSION_FIG.suptitle(
+            f"Comparison Diffusion Trajectories for n={diffused_targets.shape[0]}. \nThe distribution are matched over the {NUM_STEPS_DIFFUSION_2_CONSIDER} first steps."
+        )
+        PLOT_DIFFUSION_FIG.tight_layout()
         return
 
     def _training_step_gen(self, optim_gen, targets: torch.Tensor) -> float:
