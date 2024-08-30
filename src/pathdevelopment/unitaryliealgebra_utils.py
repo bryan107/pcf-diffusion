@@ -22,9 +22,9 @@ import math
 import torch
 
 
-def to_anti_hermitian(X: torch.Tensor) -> torch.Tensor:
+def to_anti_hermitian(X: torch.Tensor, dim1: int = -2, dim2: int = -1) -> torch.Tensor:
     """
-    Converts a given matrix to its anti-Hermitian form.
+    Converts a given matrix to its anti-Hermitian form over specified dimensions.
 
     An anti-Hermitian matrix satisfies the property :math:`A^\dagger = -A`, where :math:`A^\dagger` is the conjugate
     transpose of :math:`A`. This function computes the anti-Hermitian matrix as:
@@ -33,19 +33,31 @@ def to_anti_hermitian(X: torch.Tensor) -> torch.Tensor:
         A = \\frac{X - X^\dagger}{2}
 
     Args:
-        X (torch.Tensor): Input tensor of shape (..., n, n).
+        X (torch.Tensor): Input tensor.
+        dim1 (int): The first dimension to be used in the conjugate transpose.
+        dim2 (int): The second dimension to be used in the conjugate transpose.
 
     Returns:
         torch.Tensor: Anti-Hermitian matrix of the same shape as the input.
 
     Raises:
-        ValueError: If the input tensor does not have at least 2 dimensions or if the last two dimensions are not square.
+        ValueError: If the specified dimensions are not valid (e.g., out of range or the same).
     """
-    if X.ndim < 2 or X.size(-2) != X.size(-1):
-        raise ValueError(
-            "The input tensor must have at least 2 dimensions, and the last two dimensions must form a square matrix."
-        )
-    return (X - torch.conj(X.transpose(-2, -1))) / 2
+    assert (
+        X.ndim >= 2
+    ), f"The input tensor must have at least 2 dimensions, but got {X.ndim} dimensions. Tensor shape: {X.shape}"
+    assert X.size(dim1) == X.size(
+        dim2
+    ), f"The last two dimensions of the tensor must form a square matrix, but got shapes {X.size(-2)} and {X.size(-1)}. Tensor shape: {X.shape}"
+    assert dim1 != dim2, "The specified dimensions must be different."
+    assert (
+        dim1 < X.ndim
+    ), f"Dimension {dim1} is out of range for a tensor with {X.ndim} dimensions."
+    assert (
+        dim2 < X.ndim
+    ), f"Dimension {dim2} is out of range for a tensor with {X.ndim} dimensions."
+
+    return (X - torch.conj(X).transpose(dim1, dim2)) / 2
 
 
 def in_lie_algebra(X: torch.Tensor, eps: float = 1e-5) -> bool:
@@ -94,16 +106,15 @@ def initialize_elements(
     Raises:
         ValueError: If the tensor does not have at least 2 dimensions or if the last two dimensions are not square.
     """
-    if tensor.ndim < 2 or tensor.size(-1) != tensor.size(-2):
-        raise ValueError(
-            f"Expected a square matrix in the last two dimensions, got shape {tensor.size()}."
-        )
+    assert tensor.ndim >= 2 and tensor.size(-1) == tensor.size(
+        -2
+    ), f"Expected a square matrix in the last two dimensions, got shape {tensor.size()}."
 
-    n: int = tensor.size(-2)
+    dim_matrices: int = tensor.size(-2)
     size: int = tensor.size()[:-2]
 
-    diag = tensor.new(size + (n,))
-    off_diag = tensor.new(size + (2 * n, n))
+    diag = tensor.new(size + (dim_matrices,))
+    off_diag = tensor.new(size + (2 * dim_matrices, dim_matrices))
 
     if distribution_fn is None:
         torch.nn.init.uniform_(diag, -math.pi, math.pi)
@@ -113,8 +124,12 @@ def initialize_elements(
         distribution_fn(off_diag)
 
     diag = diag.imag * 1j
-    upper_tri_real = torch.triu(off_diag[..., :n, :n], 1).real.cfloat()
-    upper_tri_complex = torch.triu(off_diag[..., n:, :n], 1).imag.cfloat() * 1j
+    upper_tri_real = torch.triu(
+        off_diag[..., :dim_matrices, :dim_matrices], 1
+    ).real.cfloat()
+    upper_tri_complex = (
+        torch.triu(off_diag[..., dim_matrices:, :dim_matrices], 1).imag.cfloat() * 1j
+    )
 
     return diag, upper_tri_real, upper_tri_complex
 

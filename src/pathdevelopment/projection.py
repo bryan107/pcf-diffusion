@@ -22,7 +22,7 @@ class Projection(nn.Module):
 
         Args:
             matrix (torch.Tensor): Input tensor of shape ``(..., m, m)``, where ``m`` is the dimension of the square matrices.
-            exponents (torch.Tensor): Exponent tensor (ideally 1D), containing the exponents for the matrix powers.
+            exponents (torch.Tensor): Exponent tensor (ideally 1D), containing the exponents for the matrix powers. Better if the tensor is of type torch.long.
 
         Returns:
             torch.Tensor: Tensor of shape ``(..., m, m)`` where each matrix in the batch has been raised
@@ -93,13 +93,20 @@ class Projection(nn.Module):
 
         .. autofunction:: rescale_exp_matrix
         """
-        normA = torch.max(torch.sum(torch.abs(A), axis=-2), axis=-1).values
-        more = normA > 1
-        s = torch.ceil(torch.log2(normA)).long()
-        s = normA.new_zeros(normA.size(), dtype=torch.long)
-        s[more] = torch.ceil(torch.log2(normA[more])).long()
-        A_1 = torch.pow(0.5, s.float()).unsqueeze_(-1).unsqueeze_(-1).expand_as(A) * A
-        return Projection.matrix_power_two_batch(f(A_1), s)
+        # Compute the norm of each matrix in the batch (maximum sum of absolute values across rows)
+        normA = torch.max(torch.sum(torch.abs(A), dim=-2), dim=-1).values
+
+        # Determine the scaling factor s only for matrices with a norm greater than 1
+        s = torch.where(
+            normA > 1,
+            torch.ceil(torch.log2(normA)),
+            torch.zeros_like(normA),
+        )
+
+        # Scale the matrix by 2^-s
+        scaling_factor = torch.pow(0.5, s).unsqueeze(-1).unsqueeze(-1)
+
+        return Projection.matrix_power_two_batch(f(scaling_factor * A), s.long())
 
     def __init__(
         self, input_size: int, hidden_size: int, channels: typing.Optional[int] = 1
@@ -118,6 +125,8 @@ class Projection(nn.Module):
         self.hidden_size = hidden_size
         self.channels = channels
 
+        # Permute to transform the matrices from shape (input_size, channels, hidden_size, hidden_size)
+        # to shape (channels, hidden_size, hidden_size, input_size)
         self.measure_matrices = nn.Parameter(
             unitary_lie_init_(
                 torch.empty(
@@ -128,7 +137,7 @@ class Projection(nn.Module):
                     dtype=torch.cfloat,
                 ),
                 partial(nn.init.normal_, std=1),
-            )
+            ).permute(1, 2, -1, 0)
         )
         return
 
@@ -142,7 +151,12 @@ class Projection(nn.Module):
         Returns:
             torch.Tensor: Tensor of shape (N, channels, hidden_size, hidden_size).
         """
-        A = to_anti_hermitian(self.measure_matrices).permute(1, 2, -1, 0)  # C,m,m,in
-        A_dot_dX = A.matmul(dX.T).permute(-1, 0, 1, 2)  # ->C,m,m,N->N,C,m,m
+        #  self.measure_matrices -> (channels, hidden_size, hidden_size, input_size)
+        A = to_anti_hermitian(self.measure_matrices, 1, 2)
+        # A -> (channels, hidden_size, hidden_size, input_size)
+        # dX -> (N, input_size)
 
+        # Equivalent to A.matmul(dX.T).permute(-1, 0, 1, 2) is our einsum:
+        A_dot_dX = torch.einsum("chij,nj->nchi", A, dX)
+        # A_dot_dX -> (N, channels, hidden_size, hidden_size)
         return self.rescale_exp_matrix(torch.linalg.matrix_exp, A_dot_dX)
