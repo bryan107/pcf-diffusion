@@ -31,6 +31,10 @@ NUM_STEPS_DIFFUSION_2_CONSIDER += 1
 class DiffPCFGANTrainer(Trainer):
 
     @staticmethod
+    def get_noise_vector(shape: typing.Tuple[int, ...], device: str) -> torch.Tensor:
+        return torch.randn(*shape, device=device)
+
+    @staticmethod
     def _flat_add_time_transpose_and_add_zero(data: torch.Tensor) -> torch.Tensor:
         # WIP: add zero beginning of sequence but not crucial because we match partially the whole trajectory
 
@@ -144,14 +148,15 @@ class DiffPCFGANTrainer(Trainer):
 
         # WIP: explain what noise_start_seq_z we need
         if noise_start_seq_z is None:
-            noise_start_seq_z = self._get_noise_vector((num_seq, seq_len, dim_seq))
-
-        # Returns a tensor with shape (num_step_diffusion, num_seq, seq_len, generator.outputdim)
+            noise_start_seq_z = DiffPCFGANTrainer.get_noise_vector(
+                (num_seq, seq_len, dim_seq), self.device
+            )
 
         _, traj_back = self.diffusion_process.backward_sample(
             noise_start_seq_z, self.score_network
         )
 
+        # Returns a tensor with shape (num_step_diffusion, num_seq, seq_len, generator.outputdim)
         return traj_back.flip(0)
 
     def configure_optimizers(self):
@@ -376,6 +381,3 @@ class DiffPCFGANTrainer(Trainer):
 
         # Shape (S, N, L, D). This shape makes sense because we are interested in the tensor N,L,D by slices over S-dim.
         return diffused_starting_data
-
-    def _get_noise_vector(self, shape: typing.Tuple[int, ...]) -> torch.Tensor:
-        return torch.randn(*shape, device=self.device)
