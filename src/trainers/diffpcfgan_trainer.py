@@ -217,7 +217,7 @@ class DiffPCFGANTrainer(Trainer):
             # Slice to keep only 20 steps, because anyway the PCF can't capture long time sequences.
             diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
             denoised_diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
-            lambda_y=0.1,
+            lambda_y=0.0,
         )
 
         self.log(
@@ -303,7 +303,7 @@ class DiffPCFGANTrainer(Trainer):
             # WIP: Hardcoded lengths of diffusion sequence to consider.
             diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
             denoised_diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
-            lambda_y=0.1,
+            lambda_y=0.0,
         )
 
         self.manual_backward(loss_gen)
@@ -331,7 +331,7 @@ class DiffPCFGANTrainer(Trainer):
         loss_disc = -self.discriminator.distance_measure(
             diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
             denoised_diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
-            lambda_y=0.1,
+            lambda_y=0.0,
         )
         self.manual_backward(loss_disc)
         optim_discr.step()

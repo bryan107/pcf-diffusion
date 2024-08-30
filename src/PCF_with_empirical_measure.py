@@ -130,7 +130,7 @@ class PCF_with_empirical_measure(nn.Module):
             mean_unitary_development_X_1 - mean_unitary_development_X_2
         )
 
-        if lambda_y != 0:
+        if lambda_y > 1e-4:
             initial_incre_X1 = torch.cat(
                 [torch.zeros((N, 1, d)).to(X1.device), X1[:, 0, :].unsqueeze(1)], dim=1
             )
