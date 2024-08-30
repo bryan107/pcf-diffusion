@@ -11,9 +11,6 @@ class UnitaryDevelopmentLayer(nn.Module):
         hidden_size: int,
         channels: int = 1,
         include_inital: bool = False,
-        time_batch=1,
-        return_sequence=False,
-        init_range=1,
     ):
         """
         Development layer module used for computation of unitary feature on time series.
@@ -24,20 +21,14 @@ class UnitaryDevelopmentLayer(nn.Module):
             channels (int, optional): Number of channels. Defaults to 1.
             include_inital (bool, optional): Whether to include the initial value in the input. Defaults to False.
             time_batch (int, optional): Truncation value for batch processing. Defaults to 1.
-            return_sequence (bool, optional): Whether to return the entire sequence or just the final output. Defaults to False.
-            init_range (int, optional): Range for weight initialization. Defaults to 1.
         """
         super().__init__()
         self.input_size = input_size
         self.channels = channels
         self.hidden_size = hidden_size
-        self.projection = Projection(
-            input_size, hidden_size, channels, init_range=init_range
-        )
+        self.projection = Projection(input_size, hidden_size, channels)
         self.include_inital = include_inital
-        self.truncation = time_batch
-        self.complex = True
-        self.return_sequence = return_sequence
+        return
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """
@@ -49,8 +40,7 @@ class UnitaryDevelopmentLayer(nn.Module):
         Returns:
             torch.Tensor: Tensor with shape (N, L, hidden_size, hidden_size).
         """
-        if self.complex:
-            input = input.cfloat()
+        input = input.cfloat()
 
         N, L, D = input.shape
         if self.include_inital:
@@ -58,7 +48,8 @@ class UnitaryDevelopmentLayer(nn.Module):
                 [torch.zeros((N, 1, D), device=input.device), input], dim=1
             )
 
-        diff_input_dx = (input[:, 1:] - input[:, :-1]).reshape(-1, input.shape[-1])
+        # Consider the different sequence samples as different for the computation, and then reshaped back.
+        diff_input_dx = (input[:, 1:] - input[:, :-1]).reshape(N * (L - 1), D)
 
         M_dX = self.projection(diff_input_dx).reshape(
             N, -1, self.channels, self.hidden_size, self.hidden_size

@@ -85,6 +85,8 @@ if __name__ == "__main__":
 
     sns.set()
 
-    mid_price_data_module = TrivialBM_Dataset(10_000)
+    torch.manual_seed(0)
+
+    mid_price_data_module = TrivialBM_Dataset(100_000)
     mid_price_data_module.plot_data()
     plt.show()

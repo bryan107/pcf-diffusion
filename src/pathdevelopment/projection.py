@@ -1,6 +1,6 @@
+import typing
 from functools import partial
 
-import numpy as np
 import torch
 import torch.nn as nn
 
@@ -101,7 +101,9 @@ class Projection(nn.Module):
         A_1 = torch.pow(0.5, s.float()).unsqueeze_(-1).unsqueeze_(-1).expand_as(A) * A
         return Projection.matrix_power_two_batch(f(A_1), s)
 
-    def __init__(self, input_size, hidden_size, channels=1, init_range=1):
+    def __init__(
+        self, input_size: int, hidden_size: int, channels: typing.Optional[int] = 1
+    ):
         """
         Projection module used to project the path increments to the Lie group path increments
         using trainable weights from the Lie algebra.
@@ -110,29 +112,25 @@ class Projection(nn.Module):
             input_size (int): Input size.
             hidden_size (int): Size of the hidden Lie algebra matrix.
             channels (int, optional): Number of channels to produce independent Lie algebra weights. Defaults to 1.
-            init_range (int, optional): Range for weight initialization. Defaults to 1.
         """
         super().__init__()
-
-        # Very cryptic way of adding parameters
-        # self.__dict__.update(kwargs)
-
+        self.input_size = input_size
+        self.hidden_size = hidden_size
         self.channels = channels
+
         self.measure_matrices = nn.Parameter(
-            torch.empty(
-                input_size, channels, hidden_size, hidden_size, dtype=torch.cfloat
+            unitary_lie_init_(
+                torch.empty(
+                    input_size,
+                    self.channels,
+                    self.hidden_size,
+                    self.hidden_size,
+                    dtype=torch.cfloat,
+                ),
+                partial(nn.init.normal_, std=1),
             )
         )
-
-        self.init_range = init_range
-        self.set_matrices_projection()
-
-        self.hidden_size = hidden_size
-
-    def set_matrices_projection(self):
-        self.measure_matrices = unitary_lie_init_(
-            self.measure_matrices, partial(nn.init.normal_, std=1)
-        )
+        return
 
     def forward(self, dX: torch.Tensor) -> torch.Tensor:
         """

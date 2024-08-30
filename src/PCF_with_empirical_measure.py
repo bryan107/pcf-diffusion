@@ -68,7 +68,6 @@ class PCF_with_empirical_measure(nn.Module):
         num_samples: int,
         hidden_size: int,
         input_size: int,
-        init_range: float = 1,
         add_time: bool = False,
     ):
         super().__init__()
@@ -81,9 +80,7 @@ class PCF_with_empirical_measure(nn.Module):
             input_size=self.input_size,
             hidden_size=self.hidden_size,
             channels=self.num_samples,
-            include_inital=True,
-            return_sequence=False,
-            init_range=init_range,
+            include_inital=False,
         )
 
     def distance_measure(
