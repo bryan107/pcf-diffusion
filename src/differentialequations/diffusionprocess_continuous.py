@@ -21,9 +21,15 @@ class ContinuousDiffusionProcess(nn.Module):
         schedule: str,
         sde_type: SDEType = SDEType.VP,
         sde_info: Dict[SDEType, Dict[str, float]] = {
-            SDEType.VP: {"beta_min": 0.1, "beta_max": 20},
-            SDEType.SUB_VP: {"beta_min": 0.1, "beta_max": 20},
-            SDEType.VE: {"sigma_min": 0.01, "sigma_max": 50},
+            SDEType.VP: {"beta_min": torch.tensor(0.1), "beta_max": torch.tensor(20.0)},
+            SDEType.SUB_VP: {
+                "beta_min": torch.tensor(0.1),
+                "beta_max": torch.tensor(20.0),
+            },
+            SDEType.VE: {
+                "sigma_min": torch.tensor(0.01),
+                "sigma_max": torch.tensor(50.0),
+            },
         },
     ):
         """
@@ -143,7 +149,7 @@ class ContinuousDiffusionProcess(nn.Module):
         noise = torch.randn_like(x_t, device=x_t.device)
         x_prev = (
             x_t
-            - (drift - diffusion**2 * pred_score) * self.dt
+            - (drift - diffusion * diffusion * pred_score) * self.dt
             + diffusion * noise * torch.sqrt(self.dt)
         )
 
@@ -166,7 +172,7 @@ class ContinuousDiffusionProcess(nn.Module):
                 "beta_1": self.sde_params["beta_max"],
             }
 
-        if self.sde_type == SDEType.VE:
+        if self.sde_type is SDEType.VE:
             return {
                 "sigma_min": self.sde_params["sigma_min"],
                 "sigma_max": self.sde_params["sigma_max"],
@@ -195,7 +201,7 @@ class ContinuousDiffusionProcess(nn.Module):
             )
             drift = -0.5 * beta_t * diffused_process
 
-            if self.sde_type == SDEType.VP:
+            if self.sde_type is SDEType.VP:
                 diffusion = torch.sqrt(beta_t)
             else:
                 discount = 1.0 - torch.exp(
@@ -207,7 +213,7 @@ class ContinuousDiffusionProcess(nn.Module):
 
             return drift, diffusion
 
-        elif self.sde_type == SDEType.VE:
+        elif self.sde_type is SDEType.VE:
             drift = torch.zeros_like(diffused_process)
             sigma_t = (
                 self.coefficients["sigma_min"]
@@ -247,14 +253,14 @@ class ContinuousDiffusionProcess(nn.Module):
             )
             mean = torch.exp(log_mean_coeff) * x_0
 
-            if self.sde_type == SDEType.VP:
+            if self.sde_type is SDEType.VP:
                 std = torch.sqrt(1.0 - torch.exp(2.0 * log_mean_coeff))
-            elif self.sde_type == SDEType.SUB_VP:
+            elif self.sde_type is SDEType.SUB_VP:
                 std = 1.0 - torch.exp(2.0 * log_mean_coeff)
 
             return mean, std
 
-        elif self.sde_type == SDEType.VE:
+        elif self.sde_type is SDEType.VE:
             mean = x_0
             std = (
                 self.coefficients["sigma_min"]
