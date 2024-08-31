@@ -10,7 +10,7 @@ from src.utils.fasttensordataloader import FastTensorDataLoader
 
 
 class TrivialBM_Dataset(LightningDataModule):
-    def __init__(self, data_size: int):
+    def __init__(self, data_size: int, batch_size: int):
         super().__init__()
 
         # Define the parameters
@@ -30,7 +30,7 @@ class TrivialBM_Dataset(LightningDataModule):
         # train_data[:, :, 1] = torch.tensor([0, 1])
 
         self.inputs = train_data
-        self.batch_size = 500
+        self.batch_size = batch_size
 
         training_size = int(90.0 / 100.0 * len(self.inputs))
         self.train_in = self.inputs[:training_size]
@@ -87,6 +87,6 @@ if __name__ == "__main__":
 
     torch.manual_seed(0)
 
-    mid_price_data_module = TrivialBM_Dataset(100_000)
+    mid_price_data_module = TrivialBM_Dataset(100_000, 1_000_000)
     mid_price_data_module.plot_data()
     plt.show()

@@ -28,7 +28,7 @@ path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/trivial_pcfgan_train
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
 filename_model_saved = "pcfgan_1"
 
-data = TrivialBM_Dataset(2_000)
+data = TrivialBM_Dataset(5_00, 500)
 
 
 class Config:
