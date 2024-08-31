@@ -116,6 +116,7 @@ class ContinuousDiffusionProcess(nn.Module):
         """
         drift, diffusion = self._compute_drift_and_diffusion(x_prev, t - 1)
         noise = torch.randn_like(x_prev)
+        # Eq. (25) in Score-based generative modelling through SDEs.
         x_t = x_prev + drift * self.dt + diffusion * noise * torch.sqrt(self.dt)
         return x_t
 
@@ -188,16 +189,14 @@ class ContinuousDiffusionProcess(nn.Module):
         normalized_t: torch.Tensor = t / self.num_diffusion_steps
 
         if self.sde_type in {SDEType.VP, SDEType.SUB_VP}:
+            # Above Eq. (32) in Score-based generative modelling through SDEs.
             beta_t = self.coefficients["beta_0"] + normalized_t * (
                 self.coefficients["beta_1"] - self.coefficients["beta_0"]
             )
             drift = -0.5 * beta_t * diffused_process
 
             if self.sde_type == SDEType.VP:
-                try:
-                    diffusion = torch.sqrt(beta_t)
-                except TypeError as t:
-                    print(t)
+                diffusion = torch.sqrt(beta_t)
             else:
                 discount = 1.0 - torch.exp(
                     -2.0 * self.coefficients["beta_0"] * normalized_t

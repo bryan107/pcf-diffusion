@@ -25,7 +25,7 @@ class Trainer(LightningModule):
     ):
         super().__init__()
 
-        self.num_epochs = num_epochs
+        self.num_epochs = 1
 
         self.losses_history = defaultdict(list)
 

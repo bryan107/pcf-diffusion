@@ -46,7 +46,6 @@ config = {
     "D_steps_per_G_step": 1,
     "num_epochs": 501,
     "G_input_dim": 3,
-    "G_hidden_dim": 32,
     "input_dim": data.inputs.shape[2],
     "M_num_samples": 16,
     "M_hidden_dim": 12,
