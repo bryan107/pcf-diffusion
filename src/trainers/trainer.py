@@ -19,7 +19,6 @@ class Trainer(LightningModule):
         self,
         test_metrics_train,
         test_metrics_test,
-        num_epochs,
         feature_dim_time_series,
         foo=lambda x: x,
     ):
@@ -74,6 +73,7 @@ class Trainer(LightningModule):
             color="blue",
             label="Real Data",
             hist=True,
+            ax=fig.axes[0],
         )
 
         sns.distplot(
@@ -82,6 +82,7 @@ class Trainer(LightningModule):
             color="red",
             label="Sampled Data",
             hist=True,
+            ax=fig.axes[0],
         )
         plt.pause(0.1)
         plt.title("Histogram with KDE for Train and Validation Data")

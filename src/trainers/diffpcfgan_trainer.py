@@ -86,7 +86,6 @@ class DiffPCFGANTrainer(Trainer):
         super().__init__(
             test_metrics_train=test_metrics_train,
             test_metrics_test=test_metrics_test,
-            num_epochs=config.num_epochs,
             # TODO 14/08/2024 nie_k: technically this is almost correct but would be good to do it properly.
             feature_dim_time_series=config.input_dim - 1,
         )
@@ -202,11 +201,11 @@ class DiffPCFGANTrainer(Trainer):
 
         diffused_targets = DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
             diffused_targets
-        )
+        )[:, :-1]
         denoised_diffused_targets = (
             DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
                 denoised_diffused_targets
-            )
+            )[:, :-1]
         )
         logger.debug(
             "Diffused targets for validation: %s",
@@ -225,9 +224,23 @@ class DiffPCFGANTrainer(Trainer):
             lambda_y=0.0,
         )
 
+        loss_gen_reconstruction_L2 = torch.mean(
+            torch.pow(
+                diffused_targets[:, 1] - denoised_diffused_targets[:, 1],
+                2,
+            )
+        )
         self.log(
             name="val_pcfd",
             value=loss_gen,
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+        )
+
+        self.log(
+            name="val_L2recon",
+            value=loss_gen_reconstruction_L2,
             prog_bar=True,
             on_step=False,
             on_epoch=True,
@@ -283,7 +296,7 @@ class DiffPCFGANTrainer(Trainer):
         PLOT_DIFFUSION_AXES[1].set_title("backward")
         PLOT_DIFFUSION_AXES[1].set_xlabel("Diffusion Step")
         PLOT_DIFFUSION_FIG.suptitle(
-            f"Comparison Diffusion Trajectories for n={diffused_targets.shape[0]}. \nThe distribution are matched over the {NUM_STEPS_DIFFUSION_2_CONSIDER} first steps."
+            f"Comparison Diffusion Trajectories for n={diffused_targets.shape[0]}. \nThe distribution are matched over the first {NUM_STEPS_DIFFUSION_2_CONSIDER} steps."
         )
         PLOT_DIFFUSION_FIG.tight_layout()
         return
@@ -298,11 +311,11 @@ class DiffPCFGANTrainer(Trainer):
 
         diffused_targets = DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
             diffused_targets
-        )
+        )[:, :-1]
         denoised_diffused_targets = (
             DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
                 denoised_diffused_targets
-            )
+            )[:, :-1]
         )
         logger.debug(
             "Diffused targets for training: %s",
@@ -320,6 +333,14 @@ class DiffPCFGANTrainer(Trainer):
             lambda_y=0.0,
         )
 
+        # WIP: modified the vector for L2 loss
+        loss_gen_reconstruction_L2 = torch.mean(
+            torch.pow(
+                diffused_targets[:, 1, 0] - denoised_diffused_targets[:, 1, 0],
+                2,
+            )
+        )
+
         self.manual_backward(loss_gen)
         optim_gen.step()
         return loss_gen.item()
@@ -334,11 +355,11 @@ class DiffPCFGANTrainer(Trainer):
             )
             diffused_targets = DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
                 diffused_targets
-            )
+            )[:, :-1]
             denoised_diffused_targets = (
                 DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
                     denoised_diffused_targets
-                )
+                )[:, :-1]
             )
 
         # WIP: Hardcoded lengths of diffusion sequence to consider.

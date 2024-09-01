@@ -179,7 +179,7 @@ class ContinuousDiffusionProcess(nn.Module):
             }
 
     def _compute_drift_and_diffusion(
-        self, diffused_process: torch.Tensor, t: int
+        self, diffused_process: torch.Tensor, t: torch.Tensor
     ) -> Tuple[torch.Tensor, float]:
         """
         Compute the drift and diffusion coefficients for the SDE at a given timestep.
@@ -230,24 +230,27 @@ class ContinuousDiffusionProcess(nn.Module):
             return drift, diffusion
 
     def _perturbation_kernel(
-        self, x_0: torch.Tensor, t: int
+        self, x_0: torch.Tensor, t: torch.Tensor
     ) -> Tuple[torch.Tensor, Union[torch.Tensor, float]]:
         """
         Compute the perturbation kernel for the SDE.
 
         Args:
             x_0 (torch.Tensor): The initial state at time 0.
-            t (int): The current timestep as index.
+            t (torch.Tensor): The current timestep as index.
 
         Returns:
             Tuple[torch.Tensor, Union[torch.Tensor, float]]: The mean and standard deviation for the perturbation kernel.
         """
-        normalized_t = t / self.num_diffusion_steps  # Normalize timestep to [0, 1]
+        normalized_t: torch.Tensor = (
+            t / self.num_diffusion_steps
+        )  # Normalize timestep to [0, 1]
 
         if self.sde_type in {SDEType.VP, SDEType.SUB_VP}:
-            log_mean_coeff = (
+            log_mean_coeff: torch.Tensor = (
                 -0.25
-                * normalized_t**2.0
+                * normalized_t
+                * normalized_t
                 * (self.coefficients["beta_1"] - self.coefficients["beta_0"])
                 - 0.5 * normalized_t * self.coefficients["beta_0"]
             )
