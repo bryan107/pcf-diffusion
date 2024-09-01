@@ -1,0 +1,13 @@
+{
+  "base_url": "/",
+  "hostname": "localhost",
+  "password": false,
+  "pid": 30148,
+  "port": 8888,
+  "root_dir": "C:\\Users\\nihao",
+  "secure": false,
+  "sock": "",
+  "token": "ef403bc6b956bd198f4e4c5fb794bc080540124c7b4fa1b7",
+  "url": "http://localhost:8888/",
+  "version": "2.14.1"
+}
