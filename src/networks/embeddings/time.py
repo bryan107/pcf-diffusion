@@ -23,7 +23,7 @@ class TrigoTimeEmbedding(nn.Module):
         self.min_time = min_time
         self.max_time = max_time
 
-        self.learnable_weights = False
+        self.learnable_weights = True
 
         if self.learnable_weights:
             self.embedding_weights = nn.Linear(1, embed_size // 2, bias=False)
