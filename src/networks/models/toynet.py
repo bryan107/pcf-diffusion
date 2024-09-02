@@ -15,11 +15,11 @@ class ToyNet(nn.Module):
     def __init__(self, data_dim):
         super().__init__()
         self.input_dim = data_dim
-        self.hidden_dim = 512
-        self.time_embed_dim = 64
+        self.hidden_dim = 1024
+        self.time_embed_dim = 32
         self.output_dim = data_dim
 
-        self.trigotime_embed = TrigoTimeEmbedding(self.time_embed_dim, 0, 1)
+        self.trigotime_embed = TrigoTimeEmbedding(self.time_embed_dim, 0, 10)
 
         self.data_resnet = BasicNN(
             self.input_dim,
@@ -33,15 +33,15 @@ class ToyNet(nn.Module):
         # Transforms time embeddings
         self.time_fcnn = BasicNN(
             self.time_embed_dim,
-            [self.hidden_dim],
-            self.hidden_dim,
+            [self.hidden_dim // 10],
+            self.hidden_dim // 10,
             [True, True],
             [nn.SiLU()],
             0.0,
         )
         self.out_fcnn = BasicNN(
-            self.hidden_dim,
-            [self.hidden_dim, self.hidden_dim, self.hidden_dim],
+            self.hidden_dim + self.hidden_dim // 10,
+            [self.hidden_dim, 3 * self.hidden_dim, self.hidden_dim],
             self.output_dim,
             [True, True, True, True],
             [nn.SiLU(), nn.SiLU(), nn.SiLU()],
@@ -54,7 +54,12 @@ class ToyNet(nn.Module):
         t_emb = self.trigotime_embed(t.view(1))
         t_out = self.time_fcnn(t_emb)
         x_out = self.data_resnet(x)
-        out = self.out_fcnn(x_out + t_out)
+        out = self.out_fcnn(
+            torch.cat(
+                [x_out, t_out.view(1, 1, -1).expand(x_out.size(0), x_out.size(1), -1)],
+                dim=-1,
+            )
+        )
         return out
 
 

@@ -38,7 +38,7 @@ class SwissRoll_Dataset(LightningDataModule):
         self.inputs = train_data
         self.batch_size = 1_000_000
 
-        training_size = int(90.0 / 100.0 * len(self.inputs))
+        training_size = int(80.0 / 100.0 * len(self.inputs))
         self.train_in = self.inputs[:training_size]
         self.val_in = self.inputs[training_size:]
         return

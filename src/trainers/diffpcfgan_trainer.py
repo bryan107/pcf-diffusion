@@ -79,15 +79,12 @@ class DiffPCFGANTrainer(Trainer):
         num_samples_pcf,
         hidden_dim_pcf,
         num_diffusion_steps,
-        test_metrics_train,
-        test_metrics_test,
     ):
         # score_network is used to denoise the data and will be called as score_net(data, time).
         super().__init__(
-            test_metrics_train=test_metrics_train,
-            test_metrics_test=test_metrics_test,
-            # TODO 14/08/2024 nie_k: technically this is almost correct but would be good to do it properly.
-            feature_dim_time_series=config.input_dim - 1,
+            test_metrics_train=None,
+            test_metrics_test=None,
+            feature_dim_time_series=config.input_dim,
         )
 
         # Parameter for pytorch lightning
@@ -282,7 +279,7 @@ class DiffPCFGANTrainer(Trainer):
                 diffused_targets[element_dataset, :, 0],
                 linewidth=1.0,
             )
-        PLOT_DIFFUSION_AXES[0].set_title("forward")
+        PLOT_DIFFUSION_AXES[0].set_title("Forward Path")
         PLOT_DIFFUSION_AXES[0].set_xlabel("Diffusion Step")
         for element_dataset in range(denoised_diffused_targets.shape[0]):
             PLOT_DIFFUSION_AXES[1].plot(
@@ -296,7 +293,7 @@ class DiffPCFGANTrainer(Trainer):
         PLOT_DIFFUSION_AXES[0].set_xticklabels(diffusion_steps)
         PLOT_DIFFUSION_AXES[1].set_xticks(diffusion_steps[::-1])
         PLOT_DIFFUSION_AXES[1].set_xticklabels(diffusion_steps)
-        PLOT_DIFFUSION_AXES[1].set_title("backward")
+        PLOT_DIFFUSION_AXES[1].set_title("Backward Path")
         PLOT_DIFFUSION_AXES[1].set_xlabel("Diffusion Step")
         PLOT_DIFFUSION_FIG.suptitle(
             f"Comparison Diffusion Trajectories for n={diffused_targets.shape[0]}. \nThe distribution are matched over the first {NUM_STEPS_DIFFUSION_2_CONSIDER} steps."

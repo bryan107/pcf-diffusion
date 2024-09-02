@@ -29,7 +29,7 @@ path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/trivial_pcfgan_train
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
 filename_model_saved = "pcfgan_1"
 
-data = TrivialBM_Dataset(5_00, 500)
+data = TrivialBM_Dataset(1_000, 5_000)
 
 
 class Config:
@@ -47,7 +47,7 @@ config = {
     "D_steps_per_G_step": 1,
     "G_input_dim": 2,
     "input_dim": data.inputs.shape[2],
-    "M_num_samples": 16,
+    "M_num_samples": 8,
     "M_hidden_dim": 12,
     # WIP NUM ELEMENT IN SEQ?
     "n_lags": data.inputs.shape[1],
@@ -56,7 +56,7 @@ config = {
 config = Config(config)
 
 period_log: int = 5
-period_in_logs_plotting: int = 20
+period_in_logs_plotting: int = 40
 early_stop_val_loss = EarlyStopping(
     monitor="train_pcfd",
     min_delta=1e-4,
@@ -79,7 +79,7 @@ logger_custom = TrainingHistoryLogger(
     period_logging_pt_lightning=period_log,
     period_in_logs_plotting=period_in_logs_plotting,
 )
-epochs = 1001
+epochs = 5001
 
 trainer = Trainer(
     default_root_dir=path2file_linker(["out"]),
@@ -97,19 +97,6 @@ trainer = Trainer(
 )
 
 logger.info("Creating the model.")
-####### Artefact
-# lstm_generator = LSTMGenerator_Diffusion(
-#     input_dim=config.input_dim,
-#     ###Be careful, because of the operations we do, this is actually, a function. See how to do it better.
-#     output_dim=(config.input_dim - 1),
-#     seq_len=config.n_lags,
-#     hidden_dim=32,
-#     n_layers=1,
-#     noise_scale=1.0,
-#     BM=True,
-#     activation=nn.Identity(),
-# )
-###########
 score_network = ToyNet(data_dim=config.input_dim)
 model = DiffPCFGANTrainer(
     score_network=score_network,
@@ -120,10 +107,6 @@ model = DiffPCFGANTrainer(
     num_samples_pcf=config.M_num_samples,
     hidden_dim_pcf=config.M_hidden_dim,
     num_diffusion_steps=8,
-    # wip: THESE TWO SEEM UNUSED??
-    test_metrics_train=None,
-    test_metrics_test=None,
-    # WIP I THINK BATCH SIZE DOES SMTHG DIFFERENT
 )
 logger.info("Model created.")
 

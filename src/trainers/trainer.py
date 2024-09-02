@@ -46,7 +46,9 @@ class Trainer(LightningModule):
             self.plot_samples.axes[i].clear()
 
         warnings.warn(
+            "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n"
             "Is it the correct plotting method? Otherwise it might be either ugly or fail."
+            "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
         )
         # self.plot_swiss_roll(x_real, x_fake, self.plot_samples, path_file)
         self.plot_histograms(x_real, x_fake, self.plot_samples, path_file)
@@ -85,11 +87,12 @@ class Trainer(LightningModule):
             ax=fig.axes[0],
             bins=fake_X[:, 0].shape[0] // 10,
         )
-        plt.pause(0.1)
-        plt.title("Histogram with KDE comparing true and generated data")
-        plt.xlabel("Value")
-        plt.ylabel("Density")
-        plt.legend()
+        fig.axes[0].set_title(
+            f"Histogram with KDE comparing true (n={real_X.shape[0]}) and generated (n={fake_X.shape[0]}) data"
+        )
+        fig.axes[0].set_xlabel("Value")
+        fig.axes[0].set_ylabel("Density")
+        fig.axes[0].legend()
 
         directory_where_to_save = os.path.dirname(path_file)
         if not os.path.exists(directory_where_to_save):

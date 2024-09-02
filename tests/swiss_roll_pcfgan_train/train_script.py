@@ -8,12 +8,12 @@ from pytorch_lightning import seed_everything, Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
 from src.logger.init_logger import set_config_logging
-from src.networks.models.toynet import ToyNet
-from tests.swiss_roll_pcfgan_train.swissroll_dataset import SwissRoll_Dataset
 
 set_config_logging()
 logger = logging.getLogger(__name__)
 
+from tests.swiss_roll_pcfgan_train.swissroll_dataset import SwissRoll_Dataset
+from src.networks.models.toynet import ToyNet
 from config import ROOT_DIR
 from src.trainers.diffpcfgan_trainer import DiffPCFGANTrainer
 from src.utils.progressbarwithoutvalbatchupdate import ProgressbarWithoutValBatchUpdate
@@ -28,7 +28,7 @@ path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/swiss_roll_pcfgan_tr
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
 filename_model_saved = "pcfgan_1"
 
-data = SwissRoll_Dataset(1_000, True)
+data = SwissRoll_Dataset(800, True)
 
 
 class Config:
@@ -44,10 +44,9 @@ config = {
     "lr_G": 0.001,
     "lr_D": 0.001,
     "D_steps_per_G_step": 1,
-    "num_epochs": 501,
-    "G_input_dim": 3,
+    "G_input_dim": 2,
     "input_dim": data.inputs.shape[2],
-    "M_num_samples": 16,
+    "M_num_samples": 8,
     "M_hidden_dim": 12,
     # WIP NUM ELEMENT IN SEQ?
     "n_lags": data.inputs.shape[1],
@@ -55,7 +54,8 @@ config = {
 }
 config = Config(config)
 
-period_log: int = 1
+period_log: int = 5
+period_in_logs_plotting: int = 40
 early_stop_val_loss = EarlyStopping(
     monitor="train_pcfd",
     min_delta=1e-4,
@@ -73,11 +73,12 @@ chkpt = ModelCheckpoint(
 )
 
 logger_custom = TrainingHistoryLogger(
-    metrics=["train_pcfd", "val_pcfd"],
+    metrics=["train_pcfd", "val_pcfd", "train_reconst", "val_reconst"],
     plot_loss_history=True,
     period_logging_pt_lightning=period_log,
+    period_in_logs_plotting=period_in_logs_plotting,
 )
-epochs = 1001
+epochs = 5001
 
 trainer = Trainer(
     default_root_dir=path2file_linker(["out"]),
@@ -117,11 +118,7 @@ model = DiffPCFGANTrainer(
     num_D_steps_per_G_step=config.D_steps_per_G_step,
     num_samples_pcf=config.M_num_samples,
     hidden_dim_pcf=config.M_hidden_dim,
-    num_diffusion_steps=8,
-    # wip: THESE TWO SEEM UNUSED??
-    test_metrics_train=None,
-    test_metrics_test=None,
-    # WIP I THINK BATCH SIZE DOES SMTHG DIFFERENT
+    num_diffusion_steps=6,
 )
 logger.info("Model created.")
 

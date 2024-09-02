@@ -22,8 +22,8 @@ class TrivialBM_Dataset(LightningDataModule):
 
         else:
             # Parameters for the two different Gaussian distributions
-            mean1, std1 = 0.0, 1.0  # Mean and standard deviation for the first Gaussian
-            mean2, std2 = 10.0, 1.0  # Mean and standard deviation for the second Gaussian
+            mean1, std1 = 0.0, 1.0
+            mean2, std2 = 10.0, 1.0
 
             # Create a binary mask to select between the two Gaussians
             mask = (
