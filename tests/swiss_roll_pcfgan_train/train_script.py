@@ -75,7 +75,7 @@ chkpt = ModelCheckpoint(
 logger_custom = TrainingHistoryLogger(
     metrics=["train_pcfd", "val_pcfd"],
     plot_loss_history=True,
-    frequency_epoch_logging=period_log,
+    period_logging_pt_lightning=period_log,
 )
 epochs = 1001
 

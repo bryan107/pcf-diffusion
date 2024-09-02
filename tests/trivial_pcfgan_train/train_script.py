@@ -54,7 +54,8 @@ config = {
 }
 config = Config(config)
 
-period_log: int = 1
+period_log: int = 5
+period_in_logs_plotting: int = 20
 early_stop_val_loss = EarlyStopping(
     monitor="train_pcfd",
     min_delta=1e-4,
@@ -74,7 +75,8 @@ chkpt = ModelCheckpoint(
 logger_custom = TrainingHistoryLogger(
     metrics=["train_pcfd", "val_pcfd"],
     plot_loss_history=True,
-    frequency_epoch_logging=period_log,
+    period_logging_pt_lightning=period_log,
+    period_in_logs_plotting=period_in_logs_plotting,
 )
 epochs = 1001
 
