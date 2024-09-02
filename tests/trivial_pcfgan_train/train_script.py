@@ -8,11 +8,12 @@ from pytorch_lightning import seed_everything, Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
 from src.logger.init_logger import set_config_logging
-from src.networks.models.toynet import ToyNet
 
 set_config_logging()
 logger = logging.getLogger(__name__)
 
+
+from src.networks.models.toynet import ToyNet
 from config import ROOT_DIR
 from src.trainers.diffpcfgan_trainer import DiffPCFGANTrainer
 from src.utils.progressbarwithoutvalbatchupdate import ProgressbarWithoutValBatchUpdate

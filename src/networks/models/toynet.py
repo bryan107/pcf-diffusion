@@ -1,12 +1,13 @@
-import os
-import sys
+import logging
+
+import numpy as np
+import torch
+import torch.nn as nn
 
 from src.networks.basic_nn import BasicNN
 from src.networks.embeddings.time import TrigoTimeEmbedding
 
-sys.path.append(os.getcwd() + "/Toy-Diffusion-Models")
-import torch.nn as nn
-import numpy as np
+logger = logging.getLogger(__name__)
 
 
 class ToyNet(nn.Module):
@@ -14,12 +15,20 @@ class ToyNet(nn.Module):
     def __init__(self, data_dim):
         super().__init__()
         self.input_dim = data_dim
-        self.hidden_dim = 128
-        self.time_embed_dim = 16
-        out_dim = data_dim
+        self.hidden_dim = 512
+        self.time_embed_dim = 64
+        self.output_dim = data_dim
 
-        self.trigotime_embed = TrigoTimeEmbedding(self.time_embed_dim, 0, 33)
-        self.data_resnet = ResNet_FC(self.input_dim, self.hidden_dim, num_res_blocks=3)
+        self.trigotime_embed = TrigoTimeEmbedding(self.time_embed_dim, 0, 1)
+
+        self.data_resnet = BasicNN(
+            self.input_dim,
+            [self.hidden_dim],
+            self.hidden_dim,
+            [True, True],
+            [nn.SiLU()],
+            0.0,
+        )
 
         # Transforms time embeddings
         self.time_fcnn = BasicNN(
@@ -32,16 +41,17 @@ class ToyNet(nn.Module):
         )
         self.out_fcnn = BasicNN(
             self.hidden_dim,
-            [self.hidden_dim],
-            out_dim,
-            [True, True],
-            [nn.SiLU()],
+            [self.hidden_dim, self.hidden_dim, self.hidden_dim],
+            self.output_dim,
+            [True, True, True, True],
+            [nn.SiLU(), nn.SiLU(), nn.SiLU()],
             0.0,
         )
         return
 
-    def forward(self, x, t: int or list[int]):
-        t_emb = self.trigotime_embed(t.view(1, 1))
+    def forward(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        # Be careful, t needs to be a scalar (0D or 1D in torch).
+        t_emb = self.trigotime_embed(t.view(1))
         t_out = self.time_fcnn(t_emb)
         x_out = self.data_resnet(x)
         out = self.out_fcnn(x_out + t_out)

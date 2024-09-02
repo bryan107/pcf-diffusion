@@ -85,7 +85,7 @@ class Trainer(LightningModule):
             ax=fig.axes[0],
         )
         plt.pause(0.1)
-        plt.title("Histogram with KDE for Train and Validation Data")
+        plt.title("Histogram with KDE comparing true and generated data")
         plt.xlabel("Value")
         plt.ylabel("Density")
         plt.legend()
