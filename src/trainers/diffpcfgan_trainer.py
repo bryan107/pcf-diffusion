@@ -121,6 +121,8 @@ class DiffPCFGANTrainer(Trainer):
             sde_type=SDEType.VP,
         )
         self.num_diffusion_steps = num_diffusion_steps
+
+        self.reconstruction_loss = torch.nn.MSELoss()
         return
 
     def get_backward_path(
@@ -175,7 +177,7 @@ class DiffPCFGANTrainer(Trainer):
         optim_gen, optim_discr = self.optimizers()
 
         logger.debug("Targets for training: %s", targets)
-        loss_gen = self._training_step_gen(optim_gen, targets)
+        loss_gen, loss_reconst = self._training_step_gen(optim_gen, targets)
 
         for i in range(self.D_steps_per_G_step):
             self._training_step_disc(optim_discr, targets)
@@ -184,6 +186,13 @@ class DiffPCFGANTrainer(Trainer):
         self.log(
             name="train_pcfd",
             value=loss_gen,
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+        )
+        self.log(
+            name="train_reconst",
+            value=loss_reconst,
             prog_bar=True,
             on_step=False,
             on_epoch=True,
@@ -201,18 +210,15 @@ class DiffPCFGANTrainer(Trainer):
 
         diffused_targets = DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
             diffused_targets
-        )[:, :-1]
+        )
         denoised_diffused_targets = (
             DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
                 denoised_diffused_targets
-            )[:, :-1]
+            )
         )
         logger.debug(
-            "Diffused targets for validation: %s",
+            "Diffused targets for validation: \n%s\nDenoised samples for validation: %s\n",
             diffused_targets,
-        )
-        logger.debug(
-            "Denoised samples for validation: %s",
             denoised_diffused_targets,
         )
 
@@ -224,11 +230,8 @@ class DiffPCFGANTrainer(Trainer):
             lambda_y=0.0,
         )
 
-        loss_gen_reconstruction_L2 = torch.mean(
-            torch.pow(
-                diffused_targets[:, 1] - denoised_diffused_targets[:, 1],
-                2,
-            )
+        loss_gen_reconst = self.reconstruction_loss(
+            diffused_targets[:, 1, :-1], denoised_diffused_targets[:, 1, :-1]
         )
         self.log(
             name="val_pcfd",
@@ -239,8 +242,8 @@ class DiffPCFGANTrainer(Trainer):
         )
 
         self.log(
-            name="val_L2recon",
-            value=loss_gen_reconstruction_L2,
+            name="val_reconst",
+            value=loss_gen_reconst,
             prog_bar=True,
             on_step=False,
             on_epoch=True,
@@ -311,39 +314,30 @@ class DiffPCFGANTrainer(Trainer):
 
         diffused_targets = DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
             diffused_targets
-        )[:, :-1]
+        )
         denoised_diffused_targets = (
             DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
                 denoised_diffused_targets
-            )[:, :-1]
+            )
         )
         logger.debug(
-            "Diffused targets for training: %s",
+            "Diffused targets for training: \n%s\nDenoised samples for training: %s\n",
             diffused_targets,
-        )
-        logger.debug(
-            "Denoised samples for training: %s",
             denoised_diffused_targets,
         )
 
         loss_gen = self.discriminator.distance_measure(
-            # WIP: Hardcoded lengths of diffusion sequence to consider.
-            diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
-            denoised_diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
+            diffused_targets[:, :-1][:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
+            denoised_diffused_targets[:, :-1][:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
             lambda_y=0.0,
         )
-
-        # WIP: modified the vector for L2 loss
-        loss_gen_reconstruction_L2 = torch.mean(
-            torch.pow(
-                diffused_targets[:, 1, 0] - denoised_diffused_targets[:, 1, 0],
-                2,
-            )
+        loss_gen_reconstruction = self.reconstruction_loss(
+            diffused_targets[:, 1, :-1], denoised_diffused_targets[:, 1, :-1]
         )
 
         self.manual_backward(loss_gen)
         optim_gen.step()
-        return loss_gen.item()
+        return loss_gen.item(), loss_gen_reconstruction.item()
 
     def _training_step_disc(self, optim_discr, targets: torch.Tensor) -> float:
         optim_discr.zero_grad()
@@ -355,17 +349,16 @@ class DiffPCFGANTrainer(Trainer):
             )
             diffused_targets = DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
                 diffused_targets
-            )[:, :-1]
+            )
             denoised_diffused_targets = (
                 DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
                     denoised_diffused_targets
-                )[:, :-1]
+                )
             )
 
-        # WIP: Hardcoded lengths of diffusion sequence to consider.
         loss_disc = -self.discriminator.distance_measure(
-            diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
-            denoised_diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
+            diffused_targets[:, :-1][:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
+            denoised_diffused_targets[:, :-1][:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
             lambda_y=0.0,
         )
         self.manual_backward(loss_disc)

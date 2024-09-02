@@ -52,7 +52,7 @@ class TrainingHistoryLogger(LightningLoggerBase):
     ) -> None:
         """
         Args:
-            metrics (Iterable[str]): Metrics to be logged and plotted.
+            metrics (Iterable[str]): Metrics to be logged and plotted. The order in this list determines the color on the graph.
             plot_loss_history (bool): Whether to plot the loss history during training.
             period_logging_pt_lightning (int): Interval of epochs between logging.
             period_in_logs_plotting (int): Interval of logs before replotting the history.
