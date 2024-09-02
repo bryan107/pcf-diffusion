@@ -10,24 +10,39 @@ from src.utils.fasttensordataloader import FastTensorDataLoader
 
 
 class TrivialBM_Dataset(LightningDataModule):
-    def __init__(self, data_size: int, batch_size: int):
+    def __init__(self, data_size: int, batch_size: int, bimodal: int = True):
         super().__init__()
 
         # Define the parameters
         SEQ_LEN = 1
         NUM_FEATURES = 1
 
-        # Create the dataset with the specified shape
-        # Last axis first dimension  DATA[0,:]: [gaussian random variable]
+        if not bimodal:
+            train_data = torch.randn((data_size, SEQ_LEN, NUM_FEATURES))
 
-        # Initialize the dataset with zeros
-        train_data = torch.zeros((data_size, SEQ_LEN, NUM_FEATURES))
+        else:
+            # Parameters for the two different Gaussian distributions
+            mean1, std1 = 0.0, 1.0  # Mean and standard deviation for the first Gaussian
+            mean2, std2 = 10.0, 1.0  # Mean and standard deviation for the second Gaussian
 
-        # Set the first dimension of the last axis
-        train_data[:, :, 0] = torch.randn((data_size, 1))
+            # Create a binary mask to select between the two Gaussians
+            mask = (
+                torch.rand(data_size) < 0.3
+            )  # Randomly selects True or False for each sample
 
-        # # Set the second dimension of the last axis
-        # train_data[:, :, 1] = torch.tensor([0, 1])
+            # Generate data from the first Gaussian
+            data1 = torch.randn(data_size, SEQ_LEN, NUM_FEATURES) * std1 + mean1
+
+            # Generate data from the second Gaussian
+            data2 = torch.randn(data_size, SEQ_LEN, NUM_FEATURES) * std2 + mean2
+
+            # Combine the two datasets using the mask
+            train_data = torch.where(mask.view(-1, 1, 1), data1, data2)
+
+        # Standardize the data:
+        mean = train_data.mean()
+        std = train_data.std()
+        train_data = (train_data - mean) / std
 
         self.inputs = train_data
         self.batch_size = batch_size
