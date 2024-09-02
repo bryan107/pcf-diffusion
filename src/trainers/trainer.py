@@ -39,6 +39,7 @@ class Trainer(LightningModule):
         return
 
     def evaluate(self, x_fake, x_real, path_file):
+        # Better to pass x_fake and x_real with the same size such that the plots are comparable.
         self.losses_history["time"].append(time.time() - self.init_time)
 
         for i in range(len(self.plot_samples.axes)):
@@ -65,24 +66,24 @@ class Trainer(LightningModule):
             len(fake_X.shape) == 2
         ), "Data should have 2 dimensions, but got {}".format(len(fake_X.shape))
 
-        random_indices = torch.randint(real_X.shape[0], (real_X.shape[0],))
-
         sns.distplot(
-            real_X[random_indices, 0].detach().cpu().numpy(),
+            real_X[:, 0].detach().cpu().numpy(),
             kde=True,
             color="blue",
             label="Real Data",
             hist=True,
             ax=fig.axes[0],
+            bins=real_X[:, 0].shape[0] // 10,
         )
 
         sns.distplot(
-            fake_X[random_indices, 0].detach().cpu().numpy(),
+            fake_X[:, 0].detach().cpu().numpy(),
             kde=True,
             color="red",
             label="Sampled Data",
             hist=True,
             ax=fig.axes[0],
+            bins=fake_X[:, 0].shape[0] // 10,
         )
         plt.pause(0.1)
         plt.title("Histogram with KDE comparing true and generated data")
