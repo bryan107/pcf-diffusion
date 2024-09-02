@@ -151,7 +151,7 @@ class DiffPCFGANTrainer(Trainer):
                 (num_seq, seq_len, dim_seq), self.device
             )
 
-        _, traj_back = self.diffusion_process.backward_sample(
+        traj_back = self.diffusion_process.backward_sample(
             noise_start_seq_z, self.score_network
         )
 

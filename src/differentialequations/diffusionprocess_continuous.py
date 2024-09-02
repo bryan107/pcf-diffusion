@@ -21,7 +21,7 @@ class ContinuousDiffusionProcess(nn.Module):
         schedule: str,
         sde_type: SDEType = SDEType.VP,
         sde_info: Dict[SDEType, Dict[str, float]] = {
-            SDEType.VP: {"beta_min": torch.tensor(0.1), "beta_max": torch.tensor(20.0)},
+            SDEType.VP: {"beta_min": torch.tensor(0.1), "beta_max": torch.tensor(2.0)},
             SDEType.SUB_VP: {
                 "beta_min": torch.tensor(0.1),
                 "beta_max": torch.tensor(20.0),
@@ -107,7 +107,7 @@ class ContinuousDiffusionProcess(nn.Module):
             pred_score = model(x_t, time_step)
             x_t = self._backward_one_step(x_t, time_step, pred_score)
             denoised_data.append(x_t)
-        return x_t, torch.stack(denoised_data, dim=0)
+        return torch.stack(denoised_data, dim=0)
 
     def _forward_one_step(self, x_prev: torch.Tensor, t: int) -> torch.Tensor:
         """
