@@ -33,7 +33,7 @@ from tests.trivial_pcfgan_train.trivialbm_dataset import TrivialBM_Dataset
 sns.set()
 seed_everything(142, workers=True)
 
-datamodel_name = "pcfgan"
+datamodel_name = "pcfgan_test"
 path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/trivial_pcfgan_train")
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
 filename_model_saved = "pcfgan_1"
@@ -43,7 +43,7 @@ filename_model_saved = "pcfgan_1"
 remove_files_from_dir(datamodel_path)
 ###############################################
 
-data = TrivialBM_Dataset(1_000, 5_000)
+data = TrivialBM_Dataset(2_000, 5_000)
 
 
 class Config:
@@ -61,7 +61,7 @@ config = {
     "D_steps_per_G_step": 1,
     "G_input_dim": 2,
     "input_dim": data.inputs.shape[2],
-    "M_num_samples": 8,
+    "M_num_samples": 32,
     "M_hidden_dim": 12,
     # WIP NUM ELEMENT IN SEQ?
     "n_lags": data.inputs.shape[1],

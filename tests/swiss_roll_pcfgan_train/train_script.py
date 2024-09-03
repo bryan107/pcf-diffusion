@@ -41,7 +41,7 @@ filename_model_saved = "pcfgan_1"
 remove_files_from_dir(datamodel_path)
 ###############################################
 
-data = SwissRoll_Dataset(800, True)
+data = SwissRoll_Dataset(1200, True)
 
 
 class Config:
@@ -59,7 +59,7 @@ config = {
     "D_steps_per_G_step": 1,
     "G_input_dim": 2,
     "input_dim": data.inputs.shape[2],
-    "M_num_samples": 8,
+    "M_num_samples": 32,
     "M_hidden_dim": 12,
     # WIP NUM ELEMENT IN SEQ?
     "n_lags": data.inputs.shape[1],
@@ -96,7 +96,7 @@ epochs = 5001
 trainer = Trainer(
     default_root_dir=path2file_linker(["out"]),
     # gradient_clip_val=0.1,
-    gpus=1,
+    gpus=[1],
     max_epochs=epochs,
     logger=[logger_custom],
     check_val_every_n_epoch=period_log,
