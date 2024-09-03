@@ -32,7 +32,7 @@ from src.utils.utils_os import factory_fct_linked_path, remove_files_from_dir, s
 sns.set()
 seed_everything(142, workers=True)
 
-datamodel_name = "pcfgan"
+datamodel_name = "pcfgan_long_seq_train_disc"
 path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/swiss_roll_pcfgan_train")
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
 filename_model_saved = "pcfgan_1"
@@ -59,7 +59,7 @@ config = {
     "D_steps_per_G_step": 1,
     "G_input_dim": 2,
     "input_dim": data.inputs.shape[2],
-    "M_num_samples": 32,
+    "M_num_samples": 16,
     "M_hidden_dim": 12,
     # WIP NUM ELEMENT IN SEQ?
     "n_lags": data.inputs.shape[1],
@@ -118,8 +118,8 @@ model = DiffPCFGANTrainer(
     num_D_steps_per_G_step=config.D_steps_per_G_step,
     num_samples_pcf=config.M_num_samples,
     hidden_dim_pcf=config.M_hidden_dim,
-    num_diffusion_steps=8,
-    use_fixed_measure_discriminator_pcfd=True,
+    num_diffusion_steps=16,
+    use_fixed_measure_discriminator_pcfd=False,
 )
 logger.info("Model created.")
 
