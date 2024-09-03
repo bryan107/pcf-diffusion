@@ -132,6 +132,7 @@ model = DiffPCFGANTrainer(
     num_samples_pcf=config.M_num_samples,
     hidden_dim_pcf=config.M_hidden_dim,
     num_diffusion_steps=6,
+    use_fixed_measure_discriminator_pcfd=True,
 )
 logger.info("Model created.")
 

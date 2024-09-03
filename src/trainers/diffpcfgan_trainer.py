@@ -83,6 +83,7 @@ class DiffPCFGANTrainer(Trainer):
         num_samples_pcf,
         hidden_dim_pcf,
         num_diffusion_steps,
+        use_fixed_measure_discriminator_pcfd=False,
     ):
         # score_network is used to denoise the data and will be called as score_net(data, time).
         super().__init__(
@@ -112,6 +113,7 @@ class DiffPCFGANTrainer(Trainer):
             input_size=self.config.input_dim * self.config.n_lags + 1,
         )
         self.D_steps_per_G_step = num_D_steps_per_G_step
+        self.use_fixed_measure_discriminator_pcfd = use_fixed_measure_discriminator_pcfd
 
         self.output_dir_images = config.exp_dir
 
@@ -180,8 +182,9 @@ class DiffPCFGANTrainer(Trainer):
         logger.debug("Targets for training: %s", targets)
         loss_gen, loss_reconst = self._training_step_gen(optim_gen, targets)
 
-        for i in range(self.D_steps_per_G_step):
-            self._training_step_disc(optim_discr, targets)
+        if not self.use_fixed_measure_discriminator_pcfd:
+            for i in range(self.D_steps_per_G_step):
+                self._training_step_disc(optim_discr, targets)
 
         # Discriminator and Generator share the same loss so no need to report both.
         self.log(
@@ -340,7 +343,7 @@ class DiffPCFGANTrainer(Trainer):
             diffused_targets[:, 1, :-1], denoised_diffused_targets[:, 1, :-1]
         )
 
-        self.manual_backward(loss_gen)
+        self.manual_backward(loss_gen + 0.1 * loss_gen_reconstruction)
         optim_gen.step()
         return loss_gen.item(), loss_gen_reconstruction.item()
 
