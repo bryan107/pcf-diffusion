@@ -33,7 +33,7 @@ from tests.trivial_pcfgan_train.trivialbm_dataset import TrivialBM_Dataset
 sns.set()
 seed_everything(142, workers=True)
 
-datamodel_name = "pcfgan_test"
+datamodel_name = "pcfgan_disc_train"
 path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/trivial_pcfgan_train")
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
 filename_model_saved = "pcfgan_1"
@@ -56,7 +56,7 @@ class Config:
 
 config = {
     "device": "cuda",
-    "lr_G": 0.001,
+    "lr_G": 0.0005,
     "lr_D": 0.001,
     "D_steps_per_G_step": 1,
     "G_input_dim": 2,
@@ -98,7 +98,7 @@ epochs = 5001
 trainer = Trainer(
     default_root_dir=path2file_linker(["out"]),
     # gradient_clip_val=0.1,
-    gpus=1,
+    gpus=[0],
     max_epochs=epochs,
     logger=[logger_custom],
     check_val_every_n_epoch=period_log,
