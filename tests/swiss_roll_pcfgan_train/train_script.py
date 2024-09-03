@@ -109,19 +109,6 @@ trainer = Trainer(
 )
 
 logger.info("Creating the model.")
-####### Artefact
-# lstm_generator = LSTMGenerator_Diffusion(
-#     input_dim=config.input_dim,
-#     ###Be careful, because of the operations we do, this is actually, a function. See how to do it better.
-#     output_dim=(config.input_dim - 1),
-#     seq_len=config.n_lags,
-#     hidden_dim=32,
-#     n_layers=1,
-#     noise_scale=1.0,
-#     BM=True,
-#     activation=nn.Identity(),
-# )
-###########
 score_network = ToyNet(data_dim=config.input_dim)
 model = DiffPCFGANTrainer(
     score_network=score_network,
@@ -131,7 +118,7 @@ model = DiffPCFGANTrainer(
     num_D_steps_per_G_step=config.D_steps_per_G_step,
     num_samples_pcf=config.M_num_samples,
     hidden_dim_pcf=config.M_hidden_dim,
-    num_diffusion_steps=6,
+    num_diffusion_steps=8,
     use_fixed_measure_discriminator_pcfd=True,
 )
 logger.info("Model created.")
