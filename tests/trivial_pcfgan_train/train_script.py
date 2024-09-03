@@ -1,3 +1,12 @@
+"""
+Running this script will save a trained model at
+datamodel_path
+and save images of the training inside.
+
+It erases the folder before running the script.
+
+"""
+
 import logging
 import time
 
@@ -18,7 +27,7 @@ from config import ROOT_DIR
 from src.trainers.diffpcfgan_trainer import DiffPCFGANTrainer
 from src.utils.progressbarwithoutvalbatchupdate import ProgressbarWithoutValBatchUpdate
 from src.utils.traininghistorylogger import TrainingHistoryLogger
-from src.utils.utils_os import factory_fct_linked_path
+from src.utils.utils_os import factory_fct_linked_path, savefig, remove_files_from_dir
 from tests.trivial_pcfgan_train.trivialbm_dataset import TrivialBM_Dataset
 
 sns.set()
@@ -28,6 +37,11 @@ datamodel_name = "pcfgan"
 path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/trivial_pcfgan_train")
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
 filename_model_saved = "pcfgan_1"
+
+
+########## Delete the previous run if it exists
+remove_files_from_dir(datamodel_path)
+###############################################
 
 data = TrivialBM_Dataset(1_000, 5_000)
 
@@ -124,4 +138,6 @@ print(
     np.round(train_time / trainer.current_epoch, 4),
     " seconds per epochs.",
 )
+
+savefig(logger_custom.fig, config.exp_dir + f"loss_history.png")
 plt.show()

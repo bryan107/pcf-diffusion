@@ -7,23 +7,27 @@ import seaborn as sns
 import torch
 import torch.nn as nn
 
+from src.trainers.trainer import Trainer
+from src.utils.utils_os import savefig
+
+logger = logging.getLogger(__name__)
+
+
 from src.PCF_with_empirical_measure import PCF_with_empirical_measure
 from src.differentialequations.diffusionprocess_continuous import (
     SDEType,
     ContinuousDiffusionProcess,
 )
-from src.trainers.trainer import Trainer
 
-logger = logging.getLogger(__name__)
 
 # TODO 12/08/2024 nie_k: Add a way to add a zero at the beginning of a sequence without having to sample it for Swissroll.
 # TODO 12/08/2024 nie_k: Alternative plot for swiss roll.
 
-PERIOD_PLOT_VAL = 5
+PERIOD_PLOT_VAL = 100
 sns.set()
 
 PLOT_DIFFUSION_FIG, PLOT_DIFFUSION_AXES = plt.subplots(1, 2, sharey=True)
-NUM_STEPS_DIFFUSION_2_CONSIDER = 4
+NUM_STEPS_DIFFUSION_2_CONSIDER = 8
 # Adding 1 for the zero at the beginning.
 NUM_STEPS_DIFFUSION_2_CONSIDER += 1
 
@@ -299,6 +303,10 @@ class DiffPCFGANTrainer(Trainer):
             f"Comparison Diffusion Trajectories for n={diffused_targets.shape[0]}. \nThe distribution are matched over the first {NUM_STEPS_DIFFUSION_2_CONSIDER} steps."
         )
         PLOT_DIFFUSION_FIG.tight_layout()
+        savefig(
+            PLOT_DIFFUSION_FIG,
+            self.output_dir_images + f"trajectories_{str(self.current_epoch + 1)}.png",
+        )
         return
 
     def _training_step_gen(self, optim_gen, targets: torch.Tensor) -> float:

@@ -1,15 +1,15 @@
 import logging
-import os
 import time
 import warnings
 from collections import defaultdict
-from os import path as pt
 
 import matplotlib.pyplot as plt
 import seaborn as sns
 import torch
 from matplotlib.lines import Line2D
 from pytorch_lightning import LightningModule
+
+from src.utils.utils_os import savefig
 
 logger = logging.getLogger(__name__)
 
@@ -94,12 +94,7 @@ class Trainer(LightningModule):
         fig.axes[0].set_ylabel("Density")
         fig.axes[0].legend()
 
-        directory_where_to_save = os.path.dirname(path_file)
-        if not os.path.exists(directory_where_to_save):
-            if directory_where_to_save != "":
-                os.makedirs(directory_where_to_save)
-        fig.savefig(pt.join(path_file))
-
+        savefig(fig, path_file)
         plt.pause(0.01)
         return
 
@@ -149,12 +144,7 @@ class Trainer(LightningModule):
 
             fig.axes[i].legend(handles=custom_lines)
 
-        directory_where_to_save = os.path.dirname(path_file)
-        if not os.path.exists(directory_where_to_save):
-            if directory_where_to_save != "":
-                os.makedirs(directory_where_to_save)
-        fig.savefig(pt.join(path_file))
-
+        savefig(fig, path_file)
         plt.pause(0.01)
         return
 
@@ -200,12 +190,6 @@ class Trainer(LightningModule):
             alpha=0.5,
         )
         plt.legend(["Original data", "Generated data"])
-
-        directory_where_to_save = os.path.dirname(path_file)
-        if not os.path.exists(directory_where_to_save):
-            if directory_where_to_save != "":
-                os.makedirs(directory_where_to_save)
-        fig.savefig(pt.join(path_file))
-
+        savefig(fig, path_file)
         plt.pause(0.01)
         return
