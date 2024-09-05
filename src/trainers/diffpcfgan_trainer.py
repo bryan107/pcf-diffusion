@@ -40,7 +40,8 @@ class DiffPCFGANTrainer(Trainer):
 
     @staticmethod
     def _flat_add_time_transpose_and_add_zero(data: torch.Tensor) -> torch.Tensor:
-        # WIP: add zero beginning of sequence but not crucial because we match partially the whole trajectory
+        # Receive data of shape (S, N, L, D).
+        # Transforms it into (N, S, L * D)
 
         # Merge the sequence dimension (dim 2) and the feature dimension (dim 3) into a single dimension.
         # Flattening is required before adding time otherwise we would add too many dimensions with the time.
@@ -68,9 +69,8 @@ class DiffPCFGANTrainer(Trainer):
         )
         data = torch.cat((data, diffusion_times), dim=-1)
         # Permute the batch axis and the diffusion axis.
-        data = data.transpose(
-            0, 1
-        )  # adding contiguous slows down the code tremendously.
+        data = data.transpose(0, 1)
+        # adding contiguous slows down the code tremendously, so we keep it like that.
         return data
 
     def __init__(
@@ -221,14 +221,12 @@ class DiffPCFGANTrainer(Trainer):
             )
         )
         logger.debug(
-            "Diffused targets for validation: \n%s\nDenoised samples for validation: %s\n",
+            "\nDiffused targets for validation: \n%s\nDenoised samples for validation: %s\n",
             diffused_targets,
             denoised_diffused_targets,
         )
 
         loss_gen = self.discriminator.distance_measure(
-            # WIP: Hardcoded lengths of diffusion sequence to consider.
-            # Slice to keep only 20 steps, because anyway the PCF can't capture long time sequences.
             diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
             denoised_diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
             lambda_y=0.0,
@@ -329,7 +327,7 @@ class DiffPCFGANTrainer(Trainer):
             )
         )
         logger.debug(
-            "Diffused targets for training: \n%s\nDenoised samples for training: %s\n",
+            "\nDiffused targets for training: \n%s\nDenoised samples for training: %s\n",
             diffused_targets,
             denoised_diffused_targets,
         )
