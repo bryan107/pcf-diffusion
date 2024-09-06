@@ -125,6 +125,8 @@ class DiffPCFGANTrainer(Trainer):
         )
         self.num_diffusion_steps = num_diffusion_steps
 
+        self.use_diffusion_score_matching_loss = True
+
         self.reconstruction_loss = torch.nn.MSELoss()
         return
 
@@ -180,27 +182,36 @@ class DiffPCFGANTrainer(Trainer):
         optim_gen, optim_discr = self.optimizers()
 
         logger.debug("Targets for training: %s", targets)
-        loss_gen, loss_reconst = self._training_step_gen(optim_gen, targets)
+        losses_as_dict = self._training_step_gen(optim_gen, targets)
 
         if not self.use_fixed_measure_discriminator_pcfd:
             for i in range(self.D_steps_per_G_step):
-                self._training_step_disc(optim_discr, targets)
+                _ = self._training_step_disc(optim_discr, targets)
 
         # Discriminator and Generator share the same loss so no need to report both.
         self.log(
             name="train_pcfd",
-            value=loss_gen,
+            value=losses_as_dict["train_pcfd"],
             prog_bar=True,
             on_step=False,
             on_epoch=True,
         )
         self.log(
             name="train_reconst",
-            value=loss_reconst,
+            value=losses_as_dict["train_reconst"],
             prog_bar=True,
             on_step=False,
             on_epoch=True,
         )
+
+        self.log(
+            name="train_score_matching",
+            value=losses_as_dict["train_score_matching"],
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+        )
+
         return
 
     def validation_step(self, batch, batch_nb):
@@ -235,6 +246,7 @@ class DiffPCFGANTrainer(Trainer):
         loss_gen_reconst = self.reconstruction_loss(
             diffused_targets[:, 1, :-1], denoised_diffused_targets[:, 1, :-1]
         )
+
         self.log(
             name="val_pcfd",
             value=loss_gen,
@@ -251,19 +263,31 @@ class DiffPCFGANTrainer(Trainer):
             on_epoch=True,
         )
 
+        loss_gen_score_matching = self._compute_score_matching_loss(targets)
+        self.log(
+            name="val_score_matching",
+            value=loss_gen_score_matching,
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+        )
+
         # TODO 11/08/2024 nie_k: A bit of a hack, I usually code this better but will do the trick for now.
         # TODO 29/08/2024 nie_k: The plot need to be change depending on dataset (manually) and also would not work for sequences
         if not (self.current_epoch + 1) % PERIOD_PLOT_VAL:
-            path = (
+            where_image_is_saved = (
                 self.output_dir_images
                 + f"pred_vs_true_epoch_{str(self.current_epoch + 1)}"
             )
-            self.evaluate(denoised_diffused_targets[:, 1, :-1], targets[:, 0], path)
+            self.evaluate(
+                denoised_diffused_targets[:, 1, :-1],
+                targets[:, 0],
+                where_image_is_saved,
+            )
 
             self.plot_for_back_ward_trajectories(
                 denoised_diffused_targets, diffused_targets
             )
-
         return
 
     def plot_for_back_ward_trajectories(
@@ -310,14 +334,16 @@ class DiffPCFGANTrainer(Trainer):
         )
         return
 
-    def _training_step_gen(self, optim_gen, targets: torch.Tensor) -> float:
+    def _training_step_gen(
+        self, optim_gen, targets: torch.Tensor
+    ) -> typing.Dict[str, float]:
         optim_gen.zero_grad()
 
         diffused_targets: torch.Tensor = self._get_forward_path(targets, [])
         denoised_diffused_targets: torch.Tensor = self.get_backward_path(
             noise_start_seq_z=diffused_targets[-1]
         )
-
+        # TODO 06/09/2024 nie_k: If we add a zero, we can remove the last value! Let's see how we handle this.
         diffused_targets = DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
             diffused_targets
         )
@@ -341,11 +367,23 @@ class DiffPCFGANTrainer(Trainer):
             diffused_targets[:, 1, :-1], denoised_diffused_targets[:, 1, :-1]
         )
 
-        self.manual_backward(loss_gen + 0.1 * loss_gen_reconstruction)
-        optim_gen.step()
-        return loss_gen.item(), loss_gen_reconstruction.item()
+        total_loss = loss_gen + 0.1 * loss_gen_reconstruction
 
-    def _training_step_disc(self, optim_discr, targets: torch.Tensor) -> float:
+        loss_gen_score_matching = self._compute_score_matching_loss(targets)
+        if self.use_diffusion_score_matching_loss:
+            total_loss = loss_gen_score_matching
+
+        self.manual_backward(total_loss)
+        optim_gen.step()
+        return {
+            "train_pcfd": loss_gen,
+            "train_reconst": loss_gen_reconstruction,
+            "train_score_matching": loss_gen_score_matching,
+        }
+
+    def _training_step_disc(
+        self, optim_discr, targets: torch.Tensor
+    ) -> typing.Dict[str, float]:
         optim_discr.zero_grad()
 
         with torch.no_grad():
@@ -370,7 +408,9 @@ class DiffPCFGANTrainer(Trainer):
         self.manual_backward(loss_disc)
         optim_discr.step()
 
-        return loss_disc.item()
+        return {
+            "train_pcfd": loss_disc,
+        }
 
     def _get_forward_path(
         self,
@@ -401,3 +441,23 @@ class DiffPCFGANTrainer(Trainer):
 
         # Shape (S, N, L, D). This shape makes sense because we are interested in the tensor N,L,D by slices over S-dim.
         return diffused_starting_data
+
+    def _compute_score_matching_loss(self, targets):
+        time_step_diffusion = torch.randint(
+            1, self.num_diffusion_steps + 1, (1,), device=self.device
+        )
+        _, diffusion = self.diffusion_process._compute_drift_and_diffusion(
+            torch.zeros_like(targets), time_step_diffusion
+        )
+        mean, std = self.diffusion_process._perturbation_kernel(
+            targets, time_step_diffusion
+        )
+        noise = torch.randn_like(targets)
+        perturbed_noise = mean + std * noise
+        pred_score = self.score_network(perturbed_noise, time_step_diffusion)
+        # NCSN score matching objective function (x_tilda - x) / sigma^2
+        target = -noise / std
+        loss_gen_score_matching = (
+            diffusion * diffusion * self.reconstruction_loss(pred_score, target)
+        )
+        return loss_gen_score_matching

@@ -86,7 +86,14 @@ chkpt = ModelCheckpoint(
 )
 
 logger_custom = TrainingHistoryLogger(
-    metrics=["train_pcfd", "val_pcfd", "train_reconst", "val_reconst"],
+    metrics=[
+        "train_pcfd",
+        "val_pcfd",
+        "train_score_matching",
+        "train_reconst",
+        "val_reconst",
+        "val_score_matching",
+    ],
     plot_loss_history=True,
     period_logging_pt_lightning=period_log,
     period_in_logs_plotting=period_in_logs_plotting,
