@@ -13,15 +13,14 @@ import time
 import numpy as np
 import seaborn as sns
 from matplotlib import pyplot as plt
-from pytorch_lightning import seed_everything, Trainer
-from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
 from src.logger.init_logger import set_config_logging
 
 set_config_logging()
 logger = logging.getLogger(__name__)
 
-
+from pytorch_lightning import seed_everything, Trainer
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from src.networks.models.toynet import ToyNet
 from config import ROOT_DIR
 from src.trainers.diffpcfgan_trainer import DiffPCFGANTrainer
@@ -106,7 +105,7 @@ epochs = 5001
 trainer = Trainer(
     default_root_dir=path2file_linker(["out"]),
     # gradient_clip_val=0.1,
-    gpus=[4],
+    gpus=[0],
     max_epochs=epochs,
     logger=[logger_custom],
     check_val_every_n_epoch=period_log,
