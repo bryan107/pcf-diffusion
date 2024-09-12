@@ -1,11 +1,11 @@
 from functools import partial
 from typing import Tuple
 
-import ksig
+# import ksig
 import numpy as np
 import torch
 from torch import nn
-
+from abc import ABC, abstractmethod
 
 def q_var_torch(x: torch.Tensor):
     """
@@ -259,11 +259,17 @@ class Loss(nn.Module):
     @property
     def success(self):
         return torch.all(self.loss_componentwise <= self.threshold)
-
+    
+def AddTime(x):
+    def get_time_vector(size: int, length: int) -> torch.Tensor:
+        return torch.linspace(1/length, 1, length).reshape(1, -1, 1).repeat(size, 1, 1)
+    t = get_time_vector(x.shape[0], x.shape[1]).to(x.device)
+    return torch.cat([t, x], dim=-1)
 
 # UNUSED?
 def Sig_mmd(X, Y, depth):
     # convert torch tensor to numpy
+    
     N, L, C = X.shape
     N1, _, C1 = Y.shape
     X = torch.cat([torch.zeros((N, 1, C)).to(X.device), X], dim=1)
@@ -407,3 +413,142 @@ def get_standard_test_metrics(x: torch.Tensor, **kwargs):
         test_metrics["Sig_mmd"](x, depth=4),
     ]
     return test_metrics_list
+
+
+
+
+class Loss(nn.Module):
+    def __init__(self, name, reg=1.0, transform=lambda x: x, threshold=10., backward=False, norm_foo=lambda x: x, seed=None):
+        super(Loss, self).__init__()
+        self.name = name
+        self.reg = reg
+        self.transform = transform
+        self.threshold = threshold
+        self.backward = backward
+        self.norm_foo = norm_foo
+        self.seed = seed
+
+    def forward(self, x_fake):
+        self.loss_componentwise = self.compute(x_fake)
+        return self.reg * self.loss_componentwise.mean()
+
+    def compute(self, x_fake):
+        raise NotImplementedError()
+    
+    @property
+    def success(self):
+        return torch.all(self.loss_componentwise <= self.threshold)
+
+
+
+class HistoLoss(Loss):
+
+    def __init__(self, x_real, n_bins, **kwargs):
+        super(HistoLoss, self).__init__(**kwargs)
+        self.densities = list()
+        self.locs = list()
+        self.deltas = list()
+        for i in range(x_real.shape[2]):
+            tmp_densities = list()
+            tmp_locs = list()
+            tmp_deltas = list()
+            # Exclude the initial point
+            for t in range(x_real.shape[1]):
+                x_ti = x_real[:, t, i].reshape(-1, 1)
+                d, b = histogram_torch(x_ti, n_bins, density=True)
+                tmp_densities.append(nn.Parameter(d).to(x_real.device))
+                delta = b[1:2] - b[:1]
+                loc = 0.5 * (b[1:] + b[:-1])
+                tmp_locs.append(loc)
+                tmp_deltas.append(delta)
+            self.densities.append(tmp_densities)
+            self.locs.append(tmp_locs)
+            self.deltas.append(tmp_deltas)
+
+    def compute(self, x_fake):
+        loss = list()
+
+        def relu(x):
+            return x * (x >= 0.).float()
+
+        for i in range(x_fake.shape[2]):
+            tmp_loss = list()
+            # Exclude the initial point
+            for t in range(x_fake.shape[1]):
+                loc = self.locs[i][t].view(1, -1).to(x_fake.device)
+                x_ti = x_fake[:, t, i].contiguous(
+                ).view(-1, 1).repeat(1, loc.shape[1])
+                dist = torch.abs(x_ti - loc)
+                counter = (relu(self.deltas[i][t].to(
+                    x_fake.device) / 2. - dist) > 0.).float()
+                density = counter.mean(0) / self.deltas[i][t].to(x_fake.device)
+                abs_metric = torch.abs(
+                    density - self.densities[i][t].to(x_fake.device))
+                loss.append(torch.mean(abs_metric, 0))
+        loss_componentwise = torch.stack(loss)
+        return loss_componentwise
+
+
+class W1(Loss):
+    def __init__(self, D, x_real, **kwargs):
+        name = kwargs.pop('name')
+        super(W1, self).__init__(name=name)
+        self.D = D
+        self.D_real = D(x_real).mean()
+
+    def compute(self, x_fake):
+        loss = self.D_real-self.D(x_fake).mean()
+        return loss
+    
+
+class Metric(ABC):
+
+    @property
+    @abstractmethod
+    def name(self):
+        pass 
+
+    def measure(self,data, **kwargs):
+        pass
+
+
+def to_numpy(x):
+    """
+    Casts torch.Tensor to a numpy ndarray.
+
+    The function detaches the tensor from its gradients, then puts it onto the cpu and at last casts it to numpy.
+    """
+    return x.detach().cpu().numpy()
+
+def cov_torch(x):
+    """Estimates covariance matrix like numpy.cov"""
+    device = x.device
+    x = to_numpy(x)
+    _, L, C = x.shape
+    x = x.reshape(-1, L*C)
+    return torch.from_numpy(np.cov(x, rowvar=False)).to(device).float()
+
+class CovarianceMetric(Metric):
+    def __init__(self,transform=lambda x: x):
+        self.transform = transform
+    
+    @property
+    def name(self):
+        return 'CovMetric' 
+
+    def measure(self,data):
+        return cov_torch(self.transform(data))
+
+def cov_diff(x): return torch.abs(x).mean()
+
+class CovLoss(Loss):
+    def __init__(self, x_real, **kwargs):
+        super(CovLoss, self).__init__(norm_foo=cov_diff, **kwargs)
+        self.metric = CovarianceMetric(self.transform)
+        self.covariance_real = self.metric.measure(x_real)
+
+    def compute(self, x_fake):
+        covariance_fake = self.metric.measure(x_fake)
+        loss = self.norm_foo(covariance_fake -
+                             self.covariance_real.to(x_fake.device))
+        return loss
