@@ -159,6 +159,7 @@ class DiffPCFGANTrainer(Trainer):
         noise_start_seq_z: typing.Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         # Denoise data to generate new samples.
+        # Along the first dimension, the first value corresponds to the output data (generated samples).
         assert (
             num_seq is not None and seq_len is not None and dim_seq is not None
         ) or noise_start_seq_z is not None, "Either the three parameters num_seq, seq_len, dim_seq need to be given or the noise_start_seq_z."
@@ -173,7 +174,8 @@ class DiffPCFGANTrainer(Trainer):
             noise_start_seq_z, self.score_network
         )
 
-        # Returns a tensor with shape (num_step_diffusion, num_seq, seq_len, generator.outputdim)
+        # Returns a tensor with shape (num_step_diffusion, num_seq, seq_len, generator.outputdim).
+        # Along the first dimension, the first value corresponds to the output data (generated samples).
         return traj_back.flip(0)
 
     def configure_optimizers(self):
