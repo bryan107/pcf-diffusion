@@ -33,17 +33,16 @@ from tests.trivial_pcfgan_train.trivialbm_dataset import TrivialBM_Dataset
 sns.set()
 seed_everything(142, workers=True)
 
-datamodel_name = "pcfgan"
+datamodel_name = "pcfgan_disc_short_pcfd_loss"
 path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/trivial_pcfgan_train")
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
-filename_model_saved = "pcfgan_1"
 
 
 ########## Delete the previous run if it exists
 remove_files_from_dir(datamodel_path)
 ###############################################
 
-data = TrivialBM_Dataset(2_000, 5_000)
+data = TrivialBM_Dataset(750, 5_000)
 
 
 class Config:
@@ -61,7 +60,7 @@ config = {
     "D_steps_per_G_step": 1,
     "G_input_dim": 2,
     "input_dim": data.inputs.shape[2],
-    "M_num_samples": 32,
+    "M_num_samples": 16,
     "M_hidden_dim": 12,
     # WIP NUM ELEMENT IN SEQ?
     "n_lags": data.inputs.shape[1],
@@ -84,7 +83,7 @@ chkpt = ModelCheckpoint(
     verbose=True,
     save_top_k=1,
     dirpath=datamodel_path,
-    filename=filename_model_saved,
+    filename="model",
 )
 
 logger_custom = TrainingHistoryLogger(
