@@ -33,7 +33,7 @@ from tests.trivial_pcfgan_train.trivialbm_dataset import TrivialBM_Dataset
 sns.set()
 seed_everything(142, workers=True)
 
-datamodel_name = "pcfgan_disc_long_diff_combination_loss"
+datamodel_name = "pcfgan_disc_long_diff_pcfd_loss"
 path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/trivial_pcfgan_train")
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
 
@@ -106,7 +106,7 @@ epochs = 5001
 trainer = Trainer(
     default_root_dir=path2file_linker(["out"]),
     # gradient_clip_val=0.1,
-    gpus=[1],
+    gpus=[3],
     max_epochs=epochs,
     logger=[logger_custom],
     check_val_every_n_epoch=period_log,
