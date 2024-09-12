@@ -1,4 +1,5 @@
 import logging
+import math
 import typing
 
 import matplotlib.pyplot as plt
@@ -7,6 +8,7 @@ import seaborn as sns
 import torch
 import torch.nn as nn
 
+from src.metrics.epdf import HistogramLoss
 from src.trainers.trainer import Trainer
 from src.utils.utils_os import savefig
 
@@ -40,7 +42,8 @@ class DiffPCFGANTrainer(Trainer):
 
     @staticmethod
     def _flat_add_time_transpose_and_add_zero(data: torch.Tensor) -> torch.Tensor:
-        # WIP: add zero beginning of sequence but not crucial because we match partially the whole trajectory
+        # Receive data of shape (S, N, L, D).
+        # Transforms it into (N, S, L * D)
 
         # Merge the sequence dimension (dim 2) and the feature dimension (dim 3) into a single dimension.
         # Flattening is required before adding time otherwise we would add too many dimensions with the time.
@@ -68,13 +71,14 @@ class DiffPCFGANTrainer(Trainer):
         )
         data = torch.cat((data, diffusion_times), dim=-1)
         # Permute the batch axis and the diffusion axis.
-        data = data.transpose(
-            0, 1
-        )  # adding contiguous slows down the code tremendously.
+        data = data.transpose(0, 1)
+        # adding contiguous slows down the code tremendously, so we keep it like that.
         return data
 
     def __init__(
         self,
+        data_train,
+        data_val,
         score_network: nn.Module,
         config,
         learning_rate_gen,
@@ -125,7 +129,16 @@ class DiffPCFGANTrainer(Trainer):
         )
         self.num_diffusion_steps = num_diffusion_steps
 
+        ### Loses
+        self.use_diffusion_score_matching_loss = True
         self.reconstruction_loss = torch.nn.MSELoss()
+        # Instantiate the HistogramLoss
+        self.train_histo_loss = HistogramLoss(
+            data_train, int(round(2.0 * math.pow(data_train.shape[0], 1.0 / 3.0), 0))
+        )
+        self.val_histo_loss = HistogramLoss(
+            data_val, int(round(2.0 * math.pow(data_val.shape[0], 1.0 / 3.0), 0))
+        )
         return
 
     def get_backward_path(
@@ -180,27 +193,44 @@ class DiffPCFGANTrainer(Trainer):
         optim_gen, optim_discr = self.optimizers()
 
         logger.debug("Targets for training: %s", targets)
-        loss_gen, loss_reconst = self._training_step_gen(optim_gen, targets)
+        losses_as_dict = self._training_step_gen(optim_gen, targets)
 
         if not self.use_fixed_measure_discriminator_pcfd:
             for i in range(self.D_steps_per_G_step):
-                self._training_step_disc(optim_discr, targets)
+                _ = self._training_step_disc(optim_discr, targets)
 
         # Discriminator and Generator share the same loss so no need to report both.
         self.log(
             name="train_pcfd",
-            value=loss_gen,
+            value=losses_as_dict["train_pcfd"],
             prog_bar=True,
             on_step=False,
             on_epoch=True,
         )
         self.log(
             name="train_reconst",
-            value=loss_reconst,
+            value=losses_as_dict["train_reconst"],
             prog_bar=True,
             on_step=False,
             on_epoch=True,
         )
+
+        self.log(
+            name="train_score_matching",
+            value=losses_as_dict["train_score_matching"],
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+        )
+
+        self.log(
+            name="train_epdf",
+            value=losses_as_dict["train_epdf"],
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+        )
+
         return
 
     def validation_step(self, batch, batch_nb):
@@ -221,21 +251,15 @@ class DiffPCFGANTrainer(Trainer):
             )
         )
         logger.debug(
-            "Diffused targets for validation: \n%s\nDenoised samples for validation: %s\n",
+            "\nDiffused targets for validation: \n%s\nDenoised samples for validation: %s\n",
             diffused_targets,
             denoised_diffused_targets,
         )
 
         loss_gen = self.discriminator.distance_measure(
-            # WIP: Hardcoded lengths of diffusion sequence to consider.
-            # Slice to keep only 20 steps, because anyway the PCF can't capture long time sequences.
             diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
             denoised_diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
             lambda_y=0.0,
-        )
-
-        loss_gen_reconst = self.reconstruction_loss(
-            diffused_targets[:, 1, :-1], denoised_diffused_targets[:, 1, :-1]
         )
         self.log(
             name="val_pcfd",
@@ -245,6 +269,9 @@ class DiffPCFGANTrainer(Trainer):
             on_epoch=True,
         )
 
+        loss_gen_reconst = self.reconstruction_loss(
+            diffused_targets[:, 1, :-1], denoised_diffused_targets[:, 1, :-1]
+        )
         self.log(
             name="val_reconst",
             value=loss_gen_reconst,
@@ -253,19 +280,40 @@ class DiffPCFGANTrainer(Trainer):
             on_epoch=True,
         )
 
+        loss_gen_score_matching = self._compute_score_matching_loss(targets)
+        self.log(
+            name="val_score_matching",
+            value=loss_gen_score_matching,
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+        )
+
+        loss_gen_epdf = self.val_histo_loss(denoised_diffused_targets[:, 1:2, :-1])
+        self.log(
+            name="val_epdf",
+            value=loss_gen_epdf,
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+        )
+
         # TODO 11/08/2024 nie_k: A bit of a hack, I usually code this better but will do the trick for now.
         # TODO 29/08/2024 nie_k: The plot need to be change depending on dataset (manually) and also would not work for sequences
         if not (self.current_epoch + 1) % PERIOD_PLOT_VAL:
-            path = (
+            where_image_is_saved = (
                 self.output_dir_images
                 + f"pred_vs_true_epoch_{str(self.current_epoch + 1)}"
             )
-            self.evaluate(denoised_diffused_targets[:, 1, :-1], targets[:, 0], path)
+            self.evaluate(
+                denoised_diffused_targets[:, 1, :-1],
+                targets[:, 0],
+                where_image_is_saved,
+            )
 
             self.plot_for_back_ward_trajectories(
                 denoised_diffused_targets, diffused_targets
             )
-
         return
 
     def plot_for_back_ward_trajectories(
@@ -312,14 +360,16 @@ class DiffPCFGANTrainer(Trainer):
         )
         return
 
-    def _training_step_gen(self, optim_gen, targets: torch.Tensor) -> float:
+    def _training_step_gen(
+        self, optim_gen, targets: torch.Tensor
+    ) -> typing.Dict[str, float]:
         optim_gen.zero_grad()
 
         diffused_targets: torch.Tensor = self._get_forward_path(targets, [])
         denoised_diffused_targets: torch.Tensor = self.get_backward_path(
             noise_start_seq_z=diffused_targets[-1]
         )
-
+        # TODO 06/09/2024 nie_k: If we add a zero, we can remove the last value! Let's see how we handle this.
         diffused_targets = DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
             diffused_targets
         )
@@ -329,7 +379,7 @@ class DiffPCFGANTrainer(Trainer):
             )
         )
         logger.debug(
-            "Diffused targets for training: \n%s\nDenoised samples for training: %s\n",
+            "\nDiffused targets for training: \n%s\nDenoised samples for training: %s\n",
             diffused_targets,
             denoised_diffused_targets,
         )
@@ -343,11 +393,26 @@ class DiffPCFGANTrainer(Trainer):
             diffused_targets[:, 1, :-1], denoised_diffused_targets[:, 1, :-1]
         )
 
-        self.manual_backward(loss_gen + 0.1 * loss_gen_reconstruction)
-        optim_gen.step()
-        return loss_gen.item(), loss_gen_reconstruction.item()
+        total_loss = loss_gen + 0.1 * loss_gen_reconstruction
 
-    def _training_step_disc(self, optim_discr, targets: torch.Tensor) -> float:
+        loss_gen_score_matching = self._compute_score_matching_loss(targets)
+        if self.use_diffusion_score_matching_loss:
+            total_loss = total_loss + 0.1 * loss_gen_score_matching
+
+        self.manual_backward(total_loss)
+        optim_gen.step()
+
+        loss_gen_epdf = self.train_histo_loss(denoised_diffused_targets[:, 1:2, :-1])
+        return {
+            "train_pcfd": loss_gen,
+            "train_reconst": loss_gen_reconstruction,
+            "train_score_matching": loss_gen_score_matching,
+            "train_epdf": loss_gen_epdf,
+        }
+
+    def _training_step_disc(
+        self, optim_discr, targets: torch.Tensor
+    ) -> typing.Dict[str, float]:
         optim_discr.zero_grad()
 
         with torch.no_grad():
@@ -372,7 +437,9 @@ class DiffPCFGANTrainer(Trainer):
         self.manual_backward(loss_disc)
         optim_discr.step()
 
-        return loss_disc.item()
+        return {
+            "train_pcfd": loss_disc,
+        }
 
     def _get_forward_path(
         self,
@@ -403,3 +470,23 @@ class DiffPCFGANTrainer(Trainer):
 
         # Shape (S, N, L, D). This shape makes sense because we are interested in the tensor N,L,D by slices over S-dim.
         return diffused_starting_data
+
+    def _compute_score_matching_loss(self, targets):
+        time_step_diffusion = torch.randint(
+            1, self.num_diffusion_steps + 1, (1,), device=self.device
+        )
+        _, diffusion = self.diffusion_process._compute_drift_and_diffusion(
+            torch.zeros_like(targets), time_step_diffusion
+        )
+        mean, std = self.diffusion_process._perturbation_kernel(
+            targets, time_step_diffusion
+        )
+        noise = torch.randn_like(targets)
+        perturbed_noise = mean + std * noise
+        pred_score = self.score_network(perturbed_noise, time_step_diffusion)
+        # NCSN score matching objective function (x_tilda - x) / sigma^2
+        target = -noise / std
+        loss_gen_score_matching = (
+            diffusion * diffusion * self.reconstruction_loss(pred_score, target)
+        )
+        return loss_gen_score_matching

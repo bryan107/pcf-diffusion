@@ -86,7 +86,14 @@ chkpt = ModelCheckpoint(
 )
 
 logger_custom = TrainingHistoryLogger(
-    metrics=["train_pcfd", "val_pcfd", "train_reconst", "val_reconst"],
+    metrics=[
+        "train_pcfd",
+        "val_pcfd",
+        "train_score_matching",
+        "train_reconst",
+        "val_reconst",
+        "val_score_matching",
+    ],
     plot_loss_history=True,
     period_logging_pt_lightning=period_log,
     period_in_logs_plotting=period_in_logs_plotting,
@@ -111,6 +118,8 @@ trainer = Trainer(
 logger.info("Creating the model.")
 score_network = ToyNet(data_dim=config.input_dim)
 model = DiffPCFGANTrainer(
+    data_train=data.train_in,
+    data_val=data.val_in,
     score_network=score_network,
     config=config,
     learning_rate_gen=config.lr_G,

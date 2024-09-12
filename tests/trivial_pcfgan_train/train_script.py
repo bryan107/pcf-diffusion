@@ -33,7 +33,7 @@ from tests.trivial_pcfgan_train.trivialbm_dataset import TrivialBM_Dataset
 sns.set()
 seed_everything(142, workers=True)
 
-datamodel_name = "pcfgan_disc_train"
+datamodel_name = "pcfgan"
 path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/trivial_pcfgan_train")
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
 filename_model_saved = "pcfgan_1"
@@ -88,7 +88,16 @@ chkpt = ModelCheckpoint(
 )
 
 logger_custom = TrainingHistoryLogger(
-    metrics=["train_pcfd", "val_pcfd", "train_reconst", "val_reconst"],
+    metrics=[
+        "train_pcfd",
+        "val_pcfd",
+        "train_score_matching",
+        "val_score_matching",
+        "train_reconst",
+        "val_reconst",
+        "train_epdf",
+        "val_epdf",
+    ],
     plot_loss_history=True,
     period_logging_pt_lightning=period_log,
     period_in_logs_plotting=period_in_logs_plotting,
@@ -113,6 +122,8 @@ trainer = Trainer(
 logger.info("Creating the model.")
 score_network = ToyNet(data_dim=config.input_dim)
 model = DiffPCFGANTrainer(
+    data_train=data.train_in,
+    data_val=data.val_in,
     score_network=score_network,
     config=config,
     learning_rate_gen=config.lr_G,
