@@ -118,6 +118,8 @@ trainer = Trainer(
 logger.info("Creating the model.")
 score_network = ToyNet(data_dim=config.input_dim)
 model = DiffPCFGANTrainer(
+    data_train=data.train_in,
+    data_val=data.val_in,
     score_network=score_network,
     config=config,
     learning_rate_gen=config.lr_G,

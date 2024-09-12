@@ -43,7 +43,7 @@ filename_model_saved = "pcfgan_1"
 remove_files_from_dir(datamodel_path)
 ###############################################
 
-data = TrivialBM_Dataset(1_000, 5_000)
+data = TrivialBM_Dataset(500, 5_000)
 
 
 class Config:
@@ -92,9 +92,11 @@ logger_custom = TrainingHistoryLogger(
         "train_pcfd",
         "val_pcfd",
         "train_score_matching",
+        "val_score_matching",
         "train_reconst",
         "val_reconst",
-        "val_score_matching",
+        "train_epdf",
+        "val_epdf",
     ],
     plot_loss_history=True,
     period_logging_pt_lightning=period_log,
@@ -120,6 +122,8 @@ trainer = Trainer(
 logger.info("Creating the model.")
 score_network = ToyNet(data_dim=config.input_dim)
 model = DiffPCFGANTrainer(
+    data_train=data.train_in,
+    data_val=data.val_in,
     score_network=score_network,
     config=config,
     learning_rate_gen=config.lr_G,

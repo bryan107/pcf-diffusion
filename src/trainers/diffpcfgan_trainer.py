@@ -1,4 +1,5 @@
 import logging
+import math
 import typing
 
 import matplotlib.pyplot as plt
@@ -7,6 +8,7 @@ import seaborn as sns
 import torch
 import torch.nn as nn
 
+from src.metrics.epdf import HistogramLoss
 from src.trainers.trainer import Trainer
 from src.utils.utils_os import savefig
 
@@ -75,6 +77,8 @@ class DiffPCFGANTrainer(Trainer):
 
     def __init__(
         self,
+        data_train,
+        data_val,
         score_network: nn.Module,
         config,
         learning_rate_gen,
@@ -125,9 +129,16 @@ class DiffPCFGANTrainer(Trainer):
         )
         self.num_diffusion_steps = num_diffusion_steps
 
+        ### Loses
         self.use_diffusion_score_matching_loss = True
-
         self.reconstruction_loss = torch.nn.MSELoss()
+        # Instantiate the HistogramLoss
+        self.train_histo_loss = HistogramLoss(
+            data_train, int(round(2.0 * math.pow(data_train.shape[0], 1.0 / 3.0), 0))
+        )
+        self.val_histo_loss = HistogramLoss(
+            data_val, int(round(2.0 * math.pow(data_val.shape[0], 1.0 / 3.0), 0))
+        )
         return
 
     def get_backward_path(
@@ -212,6 +223,14 @@ class DiffPCFGANTrainer(Trainer):
             on_epoch=True,
         )
 
+        self.log(
+            name="train_epdf",
+            value=losses_as_dict["train_epdf"],
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+        )
+
         return
 
     def validation_step(self, batch, batch_nb):
@@ -242,11 +261,6 @@ class DiffPCFGANTrainer(Trainer):
             denoised_diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
             lambda_y=0.0,
         )
-
-        loss_gen_reconst = self.reconstruction_loss(
-            diffused_targets[:, 1, :-1], denoised_diffused_targets[:, 1, :-1]
-        )
-
         self.log(
             name="val_pcfd",
             value=loss_gen,
@@ -255,6 +269,9 @@ class DiffPCFGANTrainer(Trainer):
             on_epoch=True,
         )
 
+        loss_gen_reconst = self.reconstruction_loss(
+            diffused_targets[:, 1, :-1], denoised_diffused_targets[:, 1, :-1]
+        )
         self.log(
             name="val_reconst",
             value=loss_gen_reconst,
@@ -267,6 +284,15 @@ class DiffPCFGANTrainer(Trainer):
         self.log(
             name="val_score_matching",
             value=loss_gen_score_matching,
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+        )
+
+        loss_gen_epdf = self.val_histo_loss(denoised_diffused_targets[:, 1:2, :-1])
+        self.log(
+            name="val_epdf",
+            value=loss_gen_epdf,
             prog_bar=True,
             on_step=False,
             on_epoch=True,
@@ -371,14 +397,17 @@ class DiffPCFGANTrainer(Trainer):
 
         loss_gen_score_matching = self._compute_score_matching_loss(targets)
         if self.use_diffusion_score_matching_loss:
-            total_loss = loss_gen_score_matching
+            total_loss = total_loss + 0.1 * loss_gen_score_matching
 
         self.manual_backward(total_loss)
         optim_gen.step()
+
+        loss_gen_epdf = self.train_histo_loss(denoised_diffused_targets[:, 1:2, :-1])
         return {
             "train_pcfd": loss_gen,
             "train_reconst": loss_gen_reconstruction,
             "train_score_matching": loss_gen_score_matching,
+            "train_epdf": loss_gen_epdf,
         }
 
     def _training_step_disc(
