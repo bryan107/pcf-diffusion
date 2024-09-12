@@ -32,7 +32,7 @@ from src.utils.utils_os import factory_fct_linked_path, remove_files_from_dir, s
 sns.set()
 seed_everything(142, workers=True)
 
-datamodel_name = "pcfgan_short_diff_combination_loss"
+datamodel_name = "pcfgan_long_diff_combination_loss"
 path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/swiss_roll_pcfgan_train")
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
 filename_model_saved = "pcfgan_1"
@@ -105,7 +105,7 @@ epochs = 5001
 trainer = Trainer(
     default_root_dir=path2file_linker(["out"]),
     # gradient_clip_val=0.1,
-    gpus=[2],
+    gpus=[3],
     max_epochs=epochs,
     logger=[logger_custom],
     check_val_every_n_epoch=period_log,
@@ -129,7 +129,7 @@ model = DiffPCFGANTrainer(
     num_D_steps_per_G_step=config.D_steps_per_G_step,
     num_samples_pcf=config.M_num_samples,
     hidden_dim_pcf=config.M_hidden_dim,
-    num_diffusion_steps=16,
+    num_diffusion_steps=128,
     use_fixed_measure_discriminator_pcfd=False,
 )
 logger.info("Model created.")
