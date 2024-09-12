@@ -50,8 +50,8 @@ class Trainer(LightningModule):
             "Is it the correct plotting method? Otherwise it might be either ugly or fail."
             "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
         )
-        # self.plot_swiss_roll(x_real, x_fake, self.plot_samples, path_file)
-        self.plot_histograms(x_real, x_fake, self.plot_samples, path_file)
+        self.plot_swiss_roll(x_real, x_fake, self.plot_samples, path_file)
+        # self.plot_histograms(x_real, x_fake, self.plot_samples, path_file)
         return
 
     @staticmethod

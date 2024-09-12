@@ -32,7 +32,7 @@ from src.utils.utils_os import factory_fct_linked_path, remove_files_from_dir, s
 sns.set()
 seed_everything(142, workers=True)
 
-datamodel_name = "pcfgan_long_seq_train_disc"
+datamodel_name = "pcfgan_short_diff_scorematching_loss"
 path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/swiss_roll_pcfgan_train")
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
 filename_model_saved = "pcfgan_1"
@@ -41,7 +41,7 @@ filename_model_saved = "pcfgan_1"
 remove_files_from_dir(datamodel_path)
 ###############################################
 
-data = SwissRoll_Dataset(1200, True)
+data = SwissRoll_Dataset(1000, True)
 
 
 class Config:
