@@ -400,7 +400,7 @@ class DiffPCFGANTrainer(Trainer):
 
         loss_gen_score_matching = self._compute_score_matching_loss(targets)
         # if self.use_diffusion_score_matching_loss:
-        # total_loss = loss_gen_score_matching
+        total_loss = total_loss + 0.1 * loss_gen_score_matching
 
         self.manual_backward(total_loss)
         optim_gen.step()
