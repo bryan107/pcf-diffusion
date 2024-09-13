@@ -36,7 +36,6 @@ seed_everything(142, workers=True)
 datamodel_name = "pcfgan"
 path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/trivial_pcfgan_train")
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
-filename_model_saved = "pcfgan_1"
 
 
 ########## Delete the previous run if it exists
@@ -84,7 +83,7 @@ chkpt = ModelCheckpoint(
     verbose=True,
     save_top_k=1,
     dirpath=datamodel_path,
-    filename=filename_model_saved,
+    filename="model",
 )
 
 logger_custom = TrainingHistoryLogger(

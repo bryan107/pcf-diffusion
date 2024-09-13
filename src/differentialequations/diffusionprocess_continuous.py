@@ -88,24 +88,48 @@ class ContinuousDiffusionProcess(nn.Module):
         return torch.stack(trajectory, dim=0)
 
     def backward_sample(
-        self, noise: torch.Tensor, model: nn.Module
+        self,
+        noise: torch.Tensor,
+        model: nn.Module,
+        *,
+        proba_teacher_forcing: float,
+        sequences_forcing: torch.Tensor = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Sample from the diffusion process using the backward SDE.
 
         Args:
-            noise (torch.Tensor): The noise final point of the equation, starting the backward equation.
-            model (nn.Module): The model to predict the score. Called with two arguments: first the data and then the timestep.
+            noise (torch.Tensor): The noise at the final point of the equation, starting the backward equation.
+            model (nn.Module): The model to predict the score. Called with two arguments: the data and the timestep.
+            proba_teacher_forcing (float): Probability of using teacher forcing during sampling. Must be between 0 and 1.
+            sequences_forcing (torch.Tensor, optional): The sequences to use if teacher forcing is applied. Should match the batch size of noise.
 
         Returns:
             Tuple[torch.Tensor, torch.Tensor]: The final sample and the trajectory.
+
+        Raises:
+            AssertionError: If `proba_teacher_forcing` is not between 0 and 1, or if `sequences_forcing` does not match the expected dimensions when used.
         """
+        assert (
+            0.0 <= proba_teacher_forcing <= 1.0
+        ), f"Probability of teacher forcing should be between 0 and 1, got {proba_teacher_forcing}"
+        assert (
+            sequences_forcing is None or sequences_forcing.shape[1] == noise.shape[0]
+        ), f"Expected sequences_forcing shape {noise.shape[0]}, but got {sequences_forcing.shape[1]}"
+        assert (
+            proba_teacher_forcing < 1e-6 or sequences_forcing is not None
+        ), "Teacher forcing requires sequences_forcing when probability is non-zero"
+
         x_t = noise
         denoised_data = [x_t]
+        use_teacher_forcing = torch.rand(1).item() < proba_teacher_forcing
 
         for time_step in reversed(self.linspace_diffusion_steps):
-            pred_score = model(x_t, time_step)
-            x_t = self._backward_one_step(x_t, time_step, pred_score)
+            if use_teacher_forcing:
+                x_t = sequences_forcing[:, time_step]
+            else:
+                pred_score = model(x_t, time_step)
+                x_t = self._backward_one_step(x_t, time_step, pred_score)
             denoised_data.append(x_t)
         return torch.stack(denoised_data, dim=0)
 

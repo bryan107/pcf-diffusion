@@ -139,24 +139,37 @@ class DiffPCFGANTrainer(Trainer):
         self.val_histo_loss = HistogramLoss(
             data_val, int(round(2.0 * math.pow(data_val.shape[0], 1.0 / 3.0), 0))
         )
+
+        ### Teacher Forcing Variables
+        self.proba_teacher_forcing = 0.0
         return
 
     def get_backward_path(
         self,
+        *,
         num_seq: typing.Optional[int] = None,
         seq_len: typing.Optional[int] = None,
         dim_seq: typing.Optional[int] = None,
         noise_start_seq_z: typing.Optional[torch.Tensor] = None,
+        teacher_forcing_inputs=None,
     ) -> torch.Tensor:
         # Alias for forward for clarity
-        return self(num_seq, seq_len, dim_seq, noise_start_seq_z)
+        return self(
+            num_seq=num_seq,
+            seq_len=seq_len,
+            dim_seq=dim_seq,
+            noise_start_seq_z=noise_start_seq_z,
+            teacher_forcing_inputs=teacher_forcing_inputs,
+        )
 
     def forward(
         self,
+        *,
         num_seq: typing.Optional[int] = None,
         seq_len: typing.Optional[int] = None,
         dim_seq: typing.Optional[int] = None,
         noise_start_seq_z: typing.Optional[torch.Tensor] = None,
+        teacher_forcing_inputs=None,
     ) -> torch.Tensor:
         # Denoise data to generate new samples.
         # Along the first dimension, the first value corresponds to the output data (generated samples).
@@ -171,7 +184,10 @@ class DiffPCFGANTrainer(Trainer):
             )
 
         traj_back = self.diffusion_process.backward_sample(
-            noise_start_seq_z, self.score_network
+            noise_start_seq_z,
+            self.score_network,
+            proba_teacher_forcing=self.proba_teacher_forcing,
+            sequences_forcing=teacher_forcing_inputs,
         )
 
         # Returns a tensor with shape (num_step_diffusion, num_seq, seq_len, generator.outputdim).
@@ -241,7 +257,7 @@ class DiffPCFGANTrainer(Trainer):
         logger.debug("Targets for validation: %s", targets)
         diffused_targets: torch.Tensor = self._get_forward_path(targets, [])
         denoised_diffused_targets: torch.Tensor = self.get_backward_path(
-            noise_start_seq_z=diffused_targets[-1]
+            noise_start_seq_z=diffused_targets[-1],
         )
 
         diffused_targets = DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
@@ -369,7 +385,9 @@ class DiffPCFGANTrainer(Trainer):
 
         diffused_targets: torch.Tensor = self._get_forward_path(targets, [])
         denoised_diffused_targets: torch.Tensor = self.get_backward_path(
-            noise_start_seq_z=diffused_targets[-1]
+            noise_start_seq_z=diffused_targets[-1],
+            # Reversing the diffusion trajectories as they are used in the other direction for the backward path.
+            teacher_forcing_inputs=diffused_targets.flip(0),
         )
         # TODO 06/09/2024 nie_k: If we add a zero, we can remove the last value! Let's see how we handle this.
         diffused_targets = DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
@@ -420,7 +438,8 @@ class DiffPCFGANTrainer(Trainer):
         with torch.no_grad():
             diffused_targets: torch.Tensor = self._get_forward_path(targets, [])
             denoised_diffused_targets: torch.Tensor = self.get_backward_path(
-                noise_start_seq_z=diffused_targets[-1]
+                noise_start_seq_z=diffused_targets[-1],
+                teacher_forcing_inputs=diffused_targets.flip(0),
             )
             diffused_targets = DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
                 diffused_targets
