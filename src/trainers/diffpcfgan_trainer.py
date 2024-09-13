@@ -278,8 +278,8 @@ class DiffPCFGANTrainer(Trainer):
         )
 
         loss_gen = self.discriminator.distance_measure(
-            diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
-            denoised_diffused_targets[:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
+            diffused_targets[:, :-1][:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
+            denoised_diffused_targets[:, :-1][:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
             lambda_y=0.0,
         )
         self.log(

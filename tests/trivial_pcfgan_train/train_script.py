@@ -13,15 +13,14 @@ import time
 import numpy as np
 import seaborn as sns
 from matplotlib import pyplot as plt
-from pytorch_lightning import seed_everything, Trainer
-from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
 from src.logger.init_logger import set_config_logging
 
 set_config_logging()
 logger = logging.getLogger(__name__)
 
-
+from pytorch_lightning import seed_everything, Trainer
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from src.networks.models.toynet import ToyNet
 from config import ROOT_DIR
 from src.trainers.diffpcfgan_trainer import DiffPCFGANTrainer
