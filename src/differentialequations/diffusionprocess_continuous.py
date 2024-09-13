@@ -1,8 +1,11 @@
+import logging
 from enum import Enum
 from typing import Dict, Tuple, Union
 
 import torch
 import torch.nn as nn
+
+logger = logging.getLogger(__name__)
 
 
 class SDEType(Enum):
@@ -92,7 +95,7 @@ class ContinuousDiffusionProcess(nn.Module):
         noise: torch.Tensor,
         model: nn.Module,
         *,
-        proba_teacher_forcing: float,
+        proba_teacher_forcing: float = 0.0,
         sequences_forcing: torch.Tensor = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -126,10 +129,10 @@ class ContinuousDiffusionProcess(nn.Module):
 
         for time_step in reversed(self.linspace_diffusion_steps):
             if use_teacher_forcing:
-                x_t = sequences_forcing[:, time_step]
-            else:
-                pred_score = model(x_t, time_step)
-                x_t = self._backward_one_step(x_t, time_step, pred_score)
+                # We need to shift by 1 because the time step is shifted due to fixing first value to noise.
+                x_t = sequences_forcing[time_step - 1]
+            pred_score = model(x_t, time_step)
+            x_t = self._backward_one_step(x_t, time_step, pred_score)
             denoised_data.append(x_t)
         return torch.stack(denoised_data, dim=0)
 
