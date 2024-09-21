@@ -14,6 +14,7 @@ class PCF_with_empirical_measure(nn.Module):
         hidden_size,
         input_size,
         init_range: float = 1,
+        add_time: bool = False,
     ):
         """
         Class for computing the path charateristic function.
@@ -29,6 +30,9 @@ class PCF_with_empirical_measure(nn.Module):
         self.num_samples = num_samples
         self.hidden_size = hidden_size
         self.input_size = input_size
+        self.add_time = add_time
+        if self.add_time:
+            self.input_size += 1
         self.unitary_development = UnitaryDevelopmentLayer(
             input_size=self.input_size,
             hidden_size=self.hidden_size,
@@ -76,6 +80,12 @@ class PCF_with_empirical_measure(nn.Module):
         D = torch.bmm(X, torch.conj(Y).permute(0, 2, 1))
         return (torch.einsum("bii->b", D)).mean().real
 
+    def AddTime(self, x):
+        def get_time_vector(size: int, length: int) -> torch.Tensor:
+            return torch.linspace(1/length, 1, length).reshape(1, -1, 1).repeat(size, 1, 1)
+        t = get_time_vector(x.shape[0], x.shape[1]).to(x.device)
+        return torch.cat([t, x], dim=-1)
+    
     def distance_measure(
         self, X1: torch.tensor, X2: torch.tensor, Lambda=0.0
     ) -> torch.float:
@@ -93,6 +103,13 @@ class PCF_with_empirical_measure(nn.Module):
         Returns:
             torch.float: Distance measure between two batches of samples.
         """
+        if self.add_time:
+            X1 = self.AddTime(X1)
+            X2 = self.AddTime(X2)
+        else:
+            pass
+
+
         N, T, d = X1.shape
 
         assert (
