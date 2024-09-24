@@ -1,3 +1,4 @@
+import math
 import typing
 
 import matplotlib.pyplot as plt
@@ -31,6 +32,32 @@ def histogram_torch(x, bins, density=True):
 
 
 class HistogramLoss(nn.Module):
+
+    @staticmethod
+    def num_bins_freedman_diaconis_rule(num_samples):
+        """
+        Calculate the number of bins using the Freedman-Diaconis rule.
+
+        The Freedman-Diaconis rule suggests the optimal number of bins to use in a histogram
+        by minimizing the variance of the histogram.
+
+        The number of bins is computed as:
+
+        .. math::
+
+            bins = 2 * n^{1/3}
+
+        where:
+            - n is the number of samples.
+
+        Args:
+            num_samples (int): The number of samples in the dataset.
+
+        Returns:
+            int: The computed number of bins based on the Freedman-Diaconis rule.
+        """
+        return int(round(2.0 * math.pow(num_samples, 1.0 / 3.0), 0))
+
     # nn.Module because it has a parameter to register.
     def __init__(self, x_real: torch.Tensor, n_bins: int):
         """
@@ -38,21 +65,23 @@ class HistogramLoss(nn.Module):
 
         Args:
         - x_real (torch.Tensor): Real data tensor of shape (N, L, D).
-        - n_bins (int): Number of bins for the histograms.
+        - n_bins (int): Number of bins for the histograms. Recommended to use `num_bins_freedman_diaconis_rule`.
         """
         super().__init__()
         self.n_bins = n_bins
 
         self.num_samples, self.num_time_steps, self.num_features = x_real.shape
 
-        self.densities, self.center_bin_locs, self.bin_widths, self.bin_edges = self.precompute_histograms(
-            x_real, n_bins
+        self.densities, self.center_bin_locs, self.bin_widths, self.bin_edges = (
+            self.precompute_histograms(x_real, n_bins)
         )
 
         # This list stores the density values of the histograms for each feature at each time step.
         # Each entry in densities corresponds to a particular feature and time step, containing the density values
         # (normalized counts) of the histogram bins.
-        self.densities = nn.ParameterList([nn.Parameter(density, requires_grad=False) for density in self.densities])
+        self.densities = nn.ParameterList(
+            [nn.Parameter(density, requires_grad=False) for density in self.densities]
+        )
         # This list stores the locations of the bin centers for each feature at each time step.
         # The bin centers are computed as the midpoints between consecutive bin edges.
         self.center_bin_locs = nn.ParameterList(
@@ -61,13 +90,18 @@ class HistogramLoss(nn.Module):
         # This list stores the width of the bins (delta) for each feature at each time step.
         # The bin width is the difference between consecutive bin edges.
         self.bin_widths = nn.ParameterList(
-            [nn.Parameter(bin_width, requires_grad=False) for bin_width in self.bin_widths]
+            [
+                nn.Parameter(bin_width, requires_grad=False)
+                for bin_width in self.bin_widths
+            ]
         )
         # This list stores the bin edges for each feature at each time step.
         # The bin edges define the boundaries of the bins used to compute the histogram.
         # Not used for the loss because we directly check what points are in the bins without recomputing the histogram.
         # Used for plotting nonetheless.
-        self.bin_edges = nn.ParameterList([nn.Parameter(bin, requires_grad=False) for bin in self.bin_edges])
+        self.bin_edges = nn.ParameterList(
+            [nn.Parameter(bin, requires_grad=False) for bin in self.bin_edges]
+        )
 
     @staticmethod
     def precompute_histograms(x: torch.Tensor, n_bins: int):
@@ -140,11 +174,17 @@ class HistogramLoss(nn.Module):
                 # Distance bin center to the sample.
                 dist: torch.Tensor = torch.abs(x_ti - loc)
                 # Counts how many element of the fake data falls within the corresponding bins of the real data.
-                counter: torch.Tensor = ((self.bin_widths[time_step][feature_idx] / 2.0 - dist) > 0.0).float()
+                counter: torch.Tensor = (
+                    (self.bin_widths[time_step][feature_idx] / 2.0 - dist) > 0.0
+                ).float()
                 # Normalized count of fake data points within each bin
-                density: torch.Tensor = counter.mean(0) / self.bin_widths[time_step][feature_idx]
+                density: torch.Tensor = (
+                    counter.mean(0) / self.bin_widths[time_step][feature_idx]
+                )
                 # Abs difference between the density of the fake data and the density of the real data for each bin
-                abs_metric: torch.Tensor = torch.abs(density - self.densities[time_step][feature_idx])
+                abs_metric: torch.Tensor = torch.abs(
+                    density - self.densities[time_step][feature_idx]
+                )
                 per_time_losses.append(torch.mean(abs_metric))
             all_losses.append(torch.stack(per_time_losses))
         all_losses: torch.Tensor = torch.stack(all_losses)
@@ -173,16 +213,21 @@ class HistogramLoss(nn.Module):
 
                 # Compute histogram for fake data using the same bins as real data
                 fake_density, _ = histogram_torch(
-                    x_fake[:, time_step, feature_idx], self.bin_edges[time_step][feature_idx], density=True
+                    x_fake[:, time_step, feature_idx],
+                    self.bin_edges[time_step][feature_idx],
+                    density=True,
                 )
 
                 # Plot real data histogram
                 plt.hist(
                     self.center_bin_locs[time_step][feature_idx].cpu().numpy(),
                     bins=self.center_bin_locs[time_step][feature_idx].cpu().numpy(),
-                    weights=self.densities[time_step][feature_idx].cpu().detach().numpy(),
+                    weights=self.densities[time_step][feature_idx]
+                    .cpu()
+                    .detach()
+                    .numpy(),
                     alpha=0.5,
-                    label='Real Data',
+                    label="Real Data",
                 )
 
                 # Plot fake data histogram using the same bins as real data
@@ -191,12 +236,12 @@ class HistogramLoss(nn.Module):
                     bins=self.center_bin_locs[time_step][feature_idx].cpu().numpy(),
                     weights=fake_density.cpu().detach().numpy(),
                     alpha=0.5,
-                    label='Fake Data',
+                    label="Fake Data",
                 )
 
-                plt.title(f'Feature {feature_idx + 1}, Time Step {time_step + 1}')
-                plt.xlabel('Value')
-                plt.ylabel('Density')
+                plt.title(f"Feature {feature_idx + 1}, Time Step {time_step + 1}")
+                plt.xlabel("Value")
+                plt.ylabel("Density")
                 plt.legend()
                 plt.pause(0.01)
 
