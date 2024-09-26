@@ -1,7 +1,6 @@
 import logging
 
 import numpy as np
-import numpy.typing
 import torch
 
 
@@ -20,77 +19,48 @@ class DataLogRecord(logging.LogRecord):
                 processed_args = []
                 for arg in self.args:
                     if isinstance(arg, torch.Tensor):
-                        processed_args.append(self._format_tensor(arg))
-                    elif isinstance(arg, np.ndarray):
+                        arg = arg.detach().cpu().numpy()
+                    if isinstance(arg, np.ndarray):
                         processed_args.append(self._format_array(arg))
                     else:
                         processed_args.append(arg)
                 msg = msg % tuple(processed_args)
         return msg
 
-    def _format_tensor(self, tensor: torch.Tensor):
-        shape = list(tensor.shape)
-        if len(shape) == 3:
-            means: torch.Tensor = tensor.mean((0, 1))
-            stds: torch.Tensor = tensor.std((0, 1))
-
-            if shape[1] < 80:
-                return (
-                    "- shape: "
-                    + str(shape)
-                    + " with means (last dimension): "
-                    + self._tensor2string(means)
-                    + " and stds: "
-                    + self._tensor2string(stds)
-                    + f" with {DataLogRecord.NUM_ELEMENTS_SHOWN} first batch elements: \n"
-                    + self._tensor2string(
-                        tensor[: DataLogRecord.NUM_ELEMENTS_SHOWN, :, :].transpose(1, 2)
-                    )
-                )
-            return (
-                "- shape: "
-                + str(shape)
-                + " with means (last dimension): "
-                + self._tensor2string(means)
-                + " and stds: "
-                + self._tensor2string(stds)
-                + " with first batch element: \n"
-                + self._tensor2string(tensor[0, :, :].transpose(0, 1))
-            )
-        else:
-            return self._tensor2string(tensor)
-
     def _format_array(self, array: np.typing.ArrayLike):
         shape = list(array.shape)
-        if len(shape) == 3:
-            means: np.typing.ArrayLike = np.mean(array, axis=(0, 1))
+        total_elements = np.prod(shape)
+        nan_count = np.isnan(array).sum()
 
-            if shape[1] < 80:
-                return (
-                    "- shape: "
-                    + str(shape)
-                    + " with means (last dimension): "
-                    + np.array2string(means)
-                    + f" with {DataLogRecord.NUM_ELEMENTS_SHOWN} first batch elements: \n"
-                    + np.array2string(
-                        array[: DataLogRecord.NUM_ELEMENTS_SHOWN, :, :].transpose(
-                            0, 2, 1
-                        )
-                    )
+        if len(shape) == 3:
+            # Check for NaNs
+            if nan_count > 0:
+                means = np.nanmean(array, axis=(0, 1))
+                stds = np.nanstd(array, axis=(0, 1))
+                nan_info = f"({(nan_count / total_elements) * 100:.2f}% of values are NaNs - {nan_count} elements) "
+            else:
+                means = np.mean(array, axis=(0, 1))
+                stds = np.std(array, axis=(0, 1))
+                nan_info = ""
+
+            # In the case when the sequence is very long, we only show the first element because otherwise it will clog the logs.
+            first_batch_elements = (
+                np.array2string(
+                    array[: DataLogRecord.NUM_ELEMENTS_SHOWN, :, :].transpose(0, 2, 1)
                 )
+                if shape[1] < 80 or shape[1] > 200
+                else np.array2string(array[0, :, :].transpose(0, 1))
+            )
             return (
-                "- shape: "
-                + str(shape)
-                + " with means (last dimension): "
+                f"- shape: {shape} with means (last dimension): "
                 + np.array2string(means)
-                + " with first batch element: \n"
-                + np.array2string(array[0, :, :].transpose(0, 1))
+                + " and stds: "
+                + np.array2string(stds)
+                + f" {nan_info}. {'First batch element' if shape[1] >= 80 and shape[1] <= 200 else str(DataLogRecord.NUM_ELEMENTS_SHOWN) + ' first batch elements'}: \n"
+                + first_batch_elements
             )
         else:
             return np.array2string(array)
-
-    def _tensor2string(self, tensor):
-        return np.array2string(tensor.detach().cpu().numpy())
 
 
 if __name__ == "__main__":
