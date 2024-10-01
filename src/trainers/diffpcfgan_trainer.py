@@ -203,7 +203,7 @@ class DiffPCFGANTrainer(Trainer):
 
         ### Loses
         self.use_diffusion_score_matching_loss = True
-        self.reconstruction_loss = torch.nn.MSELoss()
+        self.L2_loss = torch.nn.MSELoss()
         # Instantiate the HistogramLoss
         self.train_histo_loss = HistogramLoss(
             data_train, int(round(2.0 * math.pow(data_train.shape[0], 1.0 / 3.0), 0))
@@ -292,37 +292,14 @@ class DiffPCFGANTrainer(Trainer):
                 _ = self._training_step_disc(optim_discr, targets)
 
         # Discriminator and Generator share the same loss so no need to report both.
-        self.log(
-            name="train_pcfd",
-            value=losses_as_dict["train_pcfd"],
-            prog_bar=True,
-            on_step=False,
-            on_epoch=True,
+        self._log_all_metrics(
+            {
+                "pcfd": losses_as_dict["train_pcfd"],
+                "score_matching": losses_as_dict["train_score_matching"],
+                "epdf": losses_as_dict["train_epdf"],
+            },
+            "train_",
         )
-        self.log(
-            name="train_reconst",
-            value=losses_as_dict["train_reconst"],
-            prog_bar=True,
-            on_step=False,
-            on_epoch=True,
-        )
-
-        self.log(
-            name="train_score_matching",
-            value=losses_as_dict["train_score_matching"],
-            prog_bar=True,
-            on_step=False,
-            on_epoch=True,
-        )
-
-        self.log(
-            name="train_epdf",
-            value=losses_as_dict["train_epdf"],
-            prog_bar=True,
-            on_step=False,
-            on_epoch=True,
-        )
-
         return
 
     def validation_step(self, batch, batch_nb):
@@ -352,41 +329,16 @@ class DiffPCFGANTrainer(Trainer):
             denoised_diffused_targets4pcfd,
             lambda_y=0.0,
         )
-        self.log(
-            name="val_pcfd",
-            value=loss_gen,
-            prog_bar=True,
-            on_step=False,
-            on_epoch=True,
-        )
-
-        loss_gen_reconst = self.reconstruction_loss(
-            diffused_targets[:, 0], denoised_diffused_targets[:, 0]
-        )
-        self.log(
-            name="val_reconst",
-            value=loss_gen_reconst,
-            prog_bar=True,
-            on_step=False,
-            on_epoch=True,
-        )
-
         loss_gen_score_matching = self._compute_score_matching_loss(targets)
-        self.log(
-            name="val_score_matching",
-            value=loss_gen_score_matching,
-            prog_bar=True,
-            on_step=False,
-            on_epoch=True,
-        )
-
         loss_gen_epdf = self.val_histo_loss(denoised_diffused_targets[:, :1])
-        self.log(
-            name="val_epdf",
-            value=loss_gen_epdf,
-            prog_bar=True,
-            on_step=False,
-            on_epoch=True,
+
+        self._log_all_metrics(
+            {
+                "pcfd": loss_gen,
+                "score_matching": loss_gen_score_matching,
+                "epdf": loss_gen_epdf,
+            },
+            "val_",
         )
 
         # TODO 11/08/2024 nie_k: A bit of a hack, I usually code this better but will do the trick for now.
@@ -498,11 +450,7 @@ class DiffPCFGANTrainer(Trainer):
             denoised_diffused_targets4pcfd,
             lambda_y=0.0,
         )
-        loss_gen_reconstruction = self.reconstruction_loss(
-            diffused_targets[:, 0], denoised_diffused_targets[:, 0]
-        )
-
-        total_loss = loss_gen + 0.1 * loss_gen_reconstruction
+        total_loss = loss_gen
 
         loss_gen_score_matching = self._compute_score_matching_loss(targets)
         if self.use_diffusion_score_matching_loss:
@@ -514,7 +462,6 @@ class DiffPCFGANTrainer(Trainer):
         loss_gen_epdf = self.train_histo_loss(denoised_diffused_targets[:, :1])
         return {
             "train_pcfd": loss_gen,
-            "train_reconst": loss_gen_reconstruction,
             "train_score_matching": loss_gen_score_matching,
             "train_epdf": loss_gen_epdf,
         }
@@ -599,6 +546,19 @@ class DiffPCFGANTrainer(Trainer):
         # NCSN score matching objective function (x_tilda - x) / sigma^2
         target = -noise / std
         loss_gen_score_matching = (
-            diffusion * diffusion * self.reconstruction_loss(pred_score, target)
+            diffusion * diffusion * self.L2_loss(pred_score, target)
         )
         return loss_gen_score_matching
+
+    def _log_all_metrics(self, metrics: typing.Dict[str, float], prefix: str):
+        # For convenience, we have a method here that will log all metrics appropriately. The only thing to pass is
+        # the prefix to the name of the metric, essentially "train_" or "val_".
+        for name, value in metrics.items():
+            self.log(
+                name=prefix + name,
+                value=value,
+                prog_bar=True,
+                on_step=False,
+                on_epoch=True,
+            )
+        return

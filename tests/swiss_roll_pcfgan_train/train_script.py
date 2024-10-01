@@ -88,8 +88,6 @@ logger_custom = TrainingHistoryLogger(
     metrics=[
         "train_score_matching",
         "val_score_matching",
-        "train_reconst",
-        "val_reconst",
         "train_pcfd",
         "val_pcfd",
         "train_epdf",
