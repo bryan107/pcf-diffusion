@@ -40,7 +40,7 @@ datamodel_path = path2file_linker(["out", datamodel_name, ""])
 remove_files_from_dir(datamodel_path)
 ###############################################
 
-data = SwissRoll_Dataset(800, True)
+data = SwissRoll_Dataset(1000, True)
 
 
 class Config:
@@ -58,7 +58,7 @@ config = {
     "D_steps_per_G_step": 1,
     "G_input_dim": 2,
     "input_dim": data.inputs.shape[2],
-    "M_num_samples": 8,
+    "M_num_samples": 16,
     "M_hidden_dim": 12,
     # WIP NUM ELEMENT IN SEQ?
     "n_lags": data.inputs.shape[1],
@@ -104,7 +104,7 @@ epochs = 5001
 trainer = Trainer(
     default_root_dir=path2file_linker(["out"]),
     # gradient_clip_val=0.1,
-    gpus=1,
+    gpus=[0],
     max_epochs=epochs,
     logger=[logger_custom],
     check_val_every_n_epoch=period_log,
@@ -128,7 +128,7 @@ model = DiffPCFGANTrainer(
     num_D_steps_per_G_step=config.D_steps_per_G_step,
     num_samples_pcf=config.M_num_samples,
     hidden_dim_pcf=config.M_hidden_dim,
-    num_diffusion_steps=8,
+    num_diffusion_steps=64,
     use_fixed_measure_discriminator_pcfd=True,
 )
 logger.info("Model created.")
