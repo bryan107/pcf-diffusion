@@ -7,7 +7,7 @@ from src.pathdevelopment.unitarydevelopmentlayer import UnitaryDevelopmentLayer
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
-class PCF_with_empirical_measure(nn.Module):
+class PCFEmpiricalMeasure(nn.Module):
     """
     A PyTorch module that computes a distance measure based on the Hilbert-Schmidt inner product
     between unitary developments of time series data.

@@ -21,6 +21,8 @@ from src.differentialequations.diffusionprocess_continuous import (
     ContinuousDiffusionProcess,
 )
 
+# For the method: plot_for_back_ward_trajectories
+sns.set()
 
 PERIOD_PLOT_VAL = 100
 
@@ -176,7 +178,7 @@ class DiffPCFGANTrainer(Trainer):
         # Discriminator Params
         self.num_samples_pcf = num_samples_pcf
         self.hidden_dim_pcf = hidden_dim_pcf
-        self.discriminator = PCF_with_empirical_measure(
+        self.discriminator = PCFEmpiricalMeasure(
             num_samples=self.num_samples_pcf,
             hidden_size=self.hidden_dim_pcf,
             # TODO 13/08/2024 nie_k: instead of input_dim, set time_series_for_compar_dim
@@ -279,7 +281,7 @@ class DiffPCFGANTrainer(Trainer):
         return [optim_gen, optim_discr], []
 
     def training_step(self, batch, batch_nb):
-        (targets,) = batch
+        targets = batch[0]
         optim_gen, optim_discr = self.optimizers()
 
         logger.debug("Targets for training: %s", targets)
@@ -324,7 +326,7 @@ class DiffPCFGANTrainer(Trainer):
         return
 
     def validation_step(self, batch, batch_nb):
-        (targets,) = batch
+        targets = batch[0]
 
         logger.debug("Targets for validation: %s", targets)
         diffused_targets: torch.Tensor = self._get_forward_path(targets, [])
