@@ -14,19 +14,15 @@ from src.utils.utils_os import savefig
 
 logger = logging.getLogger(__name__)
 
-
-from src.PCF_with_empirical_measure import PCF_with_empirical_measure
+from src.diffusionsequenceparser import DiffusionSequenceParser, TruncationParser
+from src.pcfempiricalmeasure import PCFEmpiricalMeasure
 from src.differentialequations.diffusionprocess_continuous import (
     SDEType,
     ContinuousDiffusionProcess,
 )
 
 
-# TODO 12/08/2024 nie_k: Add a way to add a zero at the beginning of a sequence without having to sample it for Swissroll.
-# TODO 12/08/2024 nie_k: Alternative plot for swiss roll.
-
 PERIOD_PLOT_VAL = 100
-sns.set()
 
 PLOT_DIFFUSION_FIG, PLOT_DIFFUSION_AXES = plt.subplots(1, 2, sharey=True)
 NUM_STEPS_DIFFUSION_2_CONSIDER = 8
@@ -74,6 +70,76 @@ class DiffPCFGANTrainer(Trainer):
         data = data.transpose(0, 1)
         # adding contiguous slows down the code tremendously, so we keep it like that.
         return data
+
+    @staticmethod
+    def flattenNtranspose(data: torch.Tensor) -> torch.Tensor:
+        # Receive data of shape (S, N, L, D).
+        # Return data of shape (N, S, L * D)
+        return data.flatten(2, 3).transpose(0, 1)
+
+    @staticmethod
+    def from_paths_to_loss(
+        diffused_targets: torch.Tensor,
+        denoised_diffused_targets: torch.Tensor,
+        step_training_for_logs: typing.Optional[str],
+        sampling_parser: typing.Optional[DiffusionSequenceParser] = None,
+    ) -> typing.Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Args:
+            diffused_targets (torch.Tensor): The diffused target sequences of shape (S, N, L, D).
+            denoised_diffused_targets (torch.Tensor): The denoised diffused target sequences of shape (S, N, L, D).
+            step_training_for_logs (Optional[str]): A string indicating the current training step for logging purposes. If not given, do not log.
+            sampling_parser (Optional[DiffusionSequenceParser]): A callable function that
+                processes the target sequences. Defaults to None.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
+        """
+        #### Prepare for PCFD loss the diffusion trajectories.
+        diffused_targets = diffused_targets[:-1]
+        denoised_diffused_targets = denoised_diffused_targets[:-1]
+
+        # Remove last value that is identical.
+        diffused_targets4pcfd = DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
+            diffused_targets
+        )
+        denoised_diffused_targets4pcfd = (
+            DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
+                denoised_diffused_targets
+            )
+        )
+        if step_training_for_logs is not None:
+            logger.debug(
+                f"\nDiffused targets for {step_training_for_logs}: \n%s\nDenoised samples for {step_training_for_logs}: %s\n",
+                diffused_targets4pcfd,
+                denoised_diffused_targets4pcfd,
+            )
+
+        if sampling_parser is not None:
+            diffused_targets4pcfd = sampling_parser(diffused_targets4pcfd)
+            denoised_diffused_targets4pcfd = sampling_parser(
+                denoised_diffused_targets4pcfd
+            )
+
+            if step_training_for_logs is not None:
+                logger.debug(
+                    f"\nDiffused targets for {step_training_for_logs} after parsing: \n%s\nDenoised samples for {step_training_for_logs}: %s\n",
+                    diffused_targets4pcfd,
+                    denoised_diffused_targets4pcfd,
+                )
+
+        # Sequences are of shape (S, N, L, D). We transform into the correct format (N, S, L * D).
+        diffused_targets = DiffPCFGANTrainer.flattenNtranspose(diffused_targets)
+        denoised_diffused_targets = DiffPCFGANTrainer.flattenNtranspose(
+            denoised_diffused_targets
+        )
+
+        return (
+            diffused_targets,
+            denoised_diffused_targets,
+            diffused_targets4pcfd,
+            denoised_diffused_targets4pcfd,
+        )
 
     def __init__(
         self,
@@ -128,6 +194,10 @@ class DiffPCFGANTrainer(Trainer):
             sde_type=SDEType.VP,
         )
         self.num_diffusion_steps = num_diffusion_steps
+
+        self.sampling_parser: typing.Optional[DiffusionSequenceParser] = (
+            TruncationParser(NUM_STEPS_DIFFUSION_2_CONSIDER)
+        )
 
         ### Loses
         self.use_diffusion_score_matching_loss = True
@@ -263,23 +333,21 @@ class DiffPCFGANTrainer(Trainer):
             proba_teacher_forcing=0.0,
         )
 
-        diffused_targets = DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
-            diffused_targets
-        )
-        denoised_diffused_targets = (
-            DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
-                denoised_diffused_targets
-            )
-        )
-        logger.debug(
-            "\nDiffused targets for validation: \n%s\nDenoised samples for validation: %s\n",
+        (
             diffused_targets,
             denoised_diffused_targets,
+            diffused_targets4pcfd,
+            denoised_diffused_targets4pcfd,
+        ) = self.from_paths_to_loss(
+            diffused_targets,
+            denoised_diffused_targets,
+            "validation",
+            self.sampling_parser,
         )
 
         loss_gen = self.discriminator.distance_measure(
-            diffused_targets[:, :-1][:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
-            denoised_diffused_targets[:, :-1][:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
+            diffused_targets4pcfd,
+            denoised_diffused_targets4pcfd,
             lambda_y=0.0,
         )
         self.log(
@@ -291,7 +359,7 @@ class DiffPCFGANTrainer(Trainer):
         )
 
         loss_gen_reconst = self.reconstruction_loss(
-            diffused_targets[:, 1, :-1], denoised_diffused_targets[:, 1, :-1]
+            diffused_targets[:, 0], denoised_diffused_targets[:, 0]
         )
         self.log(
             name="val_reconst",
@@ -310,7 +378,7 @@ class DiffPCFGANTrainer(Trainer):
             on_epoch=True,
         )
 
-        loss_gen_epdf = self.val_histo_loss(denoised_diffused_targets[:, 1:2, :-1])
+        loss_gen_epdf = self.val_histo_loss(denoised_diffused_targets[:, :1])
         self.log(
             name="val_epdf",
             value=loss_gen_epdf,
@@ -327,7 +395,7 @@ class DiffPCFGANTrainer(Trainer):
                 + f"pred_vs_true_epoch_{str(self.current_epoch + 1)}"
             )
             self.evaluate(
-                denoised_diffused_targets[:, 1, :-1],
+                denoised_diffused_targets[:, 0],
                 targets[:, 0],
                 where_image_is_saved,
             )
@@ -340,6 +408,13 @@ class DiffPCFGANTrainer(Trainer):
     def plot_for_back_ward_trajectories(
         self, denoised_diffused_targets, diffused_targets
     ):
+        assert (
+            denoised_diffused_targets.shape == diffused_targets.shape
+        ), f"Shapes are not the same: {denoised_diffused_targets.shape} and {diffused_targets.shape}."
+        assert (
+            len(denoised_diffused_targets.shape) == 3
+        ), f"Expected 3 dimensions but got {len(denoised_diffused_targets.shape)} dimensions."
+
         denoised_diffused_targets = denoised_diffused_targets.detach().cpu().numpy()
         diffused_targets = diffused_targets.detach().cpu().numpy()
 
@@ -403,28 +478,26 @@ class DiffPCFGANTrainer(Trainer):
             proba_teacher_forcing=self.proba_teacher_forcing,
             teacher_forcing_inputs=diffused_targets,
         )
-        # TODO 06/09/2024 nie_k: If we add a zero, we can remove the last value! Let's see how we handle this.
-        diffused_targets = DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
-            diffused_targets
-        )
-        denoised_diffused_targets = (
-            DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
-                denoised_diffused_targets
-            )
-        )
-        logger.debug(
-            "\nDiffused targets for training: \n%s\nDenoised samples for training: %s\n",
+
+        (
             diffused_targets,
             denoised_diffused_targets,
+            diffused_targets4pcfd,
+            denoised_diffused_targets4pcfd,
+        ) = self.from_paths_to_loss(
+            diffused_targets,
+            denoised_diffused_targets,
+            "training",
+            self.sampling_parser,
         )
 
         loss_gen = self.discriminator.distance_measure(
-            diffused_targets[:, :-1][:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
-            denoised_diffused_targets[:, :-1][:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
+            diffused_targets4pcfd,
+            denoised_diffused_targets4pcfd,
             lambda_y=0.0,
         )
         loss_gen_reconstruction = self.reconstruction_loss(
-            diffused_targets[:, 1, :-1], denoised_diffused_targets[:, 1, :-1]
+            diffused_targets[:, 0], denoised_diffused_targets[:, 0]
         )
 
         total_loss = loss_gen + 0.1 * loss_gen_reconstruction
@@ -436,7 +509,7 @@ class DiffPCFGANTrainer(Trainer):
         self.manual_backward(total_loss)
         optim_gen.step()
 
-        loss_gen_epdf = self.train_histo_loss(denoised_diffused_targets[:, 1:2, :-1])
+        loss_gen_epdf = self.train_histo_loss(denoised_diffused_targets[:, :1])
         return {
             "train_pcfd": loss_gen,
             "train_reconst": loss_gen_reconstruction,
@@ -456,18 +529,19 @@ class DiffPCFGANTrainer(Trainer):
                 proba_teacher_forcing=self.proba_teacher_forcing,
                 teacher_forcing_inputs=diffused_targets,
             )
-            diffused_targets = DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
-                diffused_targets
-            )
-            denoised_diffused_targets = (
-                DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
-                    denoised_diffused_targets
-                )
+
+            (
+                _,
+                _,
+                diffused_targets4pcfd,
+                denoised_diffused_targets4pcfd,
+            ) = self.from_paths_to_loss(
+                diffused_targets, denoised_diffused_targets, None, self.sampling_parser
             )
 
         loss_disc = -self.discriminator.distance_measure(
-            diffused_targets[:, :-1][:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
-            denoised_diffused_targets[:, :-1][:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
+            diffused_targets4pcfd,
+            denoised_diffused_targets4pcfd,
             lambda_y=0.0,
         )
         self.manual_backward(loss_disc)
