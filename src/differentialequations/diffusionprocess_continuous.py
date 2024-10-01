@@ -1,4 +1,5 @@
 import logging
+import typing
 from enum import Enum
 from typing import Dict, Tuple, Union
 
@@ -6,6 +7,8 @@ import torch
 import torch.nn as nn
 
 logger = logging.getLogger(__name__)
+
+ScoreNetworkType = typing.Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 
 
 class SDEType(Enum):
@@ -93,7 +96,7 @@ class ContinuousDiffusionProcess(nn.Module):
     def backward_sample(
         self,
         noise: torch.Tensor,
-        model: nn.Module,
+        model: ScoreNetworkType,
         *,
         proba_teacher_forcing: float = 0.0,
         sequences_forcing: torch.Tensor = None,

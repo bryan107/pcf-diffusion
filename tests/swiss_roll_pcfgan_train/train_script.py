@@ -19,6 +19,7 @@ from src.logger.init_logger import set_config_logging
 set_config_logging()
 logger = logging.getLogger(__name__)
 
+from src.trainers.visual_data import DataType
 from pytorch_lightning import seed_everything, Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from tests.swiss_roll_pcfgan_train.swissroll_dataset import SwissRoll_Dataset
@@ -128,6 +129,7 @@ model = DiffPCFGANTrainer(
     hidden_dim_pcf=config.M_hidden_dim,
     num_diffusion_steps=8,
     use_fixed_measure_discriminator_pcfd=True,
+    data_type=DataType.TWO_D,
 )
 logger.info("Model created.")
 
