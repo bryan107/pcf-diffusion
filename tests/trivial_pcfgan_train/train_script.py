@@ -15,6 +15,7 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 
 from src.logger.init_logger import set_config_logging
+from src.trainers.visual_data import DataType
 
 set_config_logging()
 logger = logging.getLogger(__name__)
@@ -89,8 +90,6 @@ logger_custom = TrainingHistoryLogger(
     metrics=[
         "train_score_matching",
         "val_score_matching",
-        "train_reconst",
-        "val_reconst",
         "train_pcfd",
         "val_pcfd",
         "train_epdf",
@@ -131,6 +130,7 @@ model = DiffPCFGANTrainer(
     hidden_dim_pcf=config.M_hidden_dim,
     num_diffusion_steps=8,
     use_fixed_measure_discriminator_pcfd=True,
+    data_type=DataType.ONE_D,
 )
 logger.info("Model created.")
 

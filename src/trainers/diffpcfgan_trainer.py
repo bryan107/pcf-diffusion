@@ -6,10 +6,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import torch
-import torch.nn as nn
+from pytorch_lightning import LightningModule
 
 from src.metrics.epdf import HistogramLoss
-from src.trainers.trainer import Trainer
+from src.trainers.visual_data import DataType
 from src.utils.utils_os import savefig
 
 logger = logging.getLogger(__name__)
@@ -24,15 +24,18 @@ from src.differentialequations.diffusionprocess_continuous import (
 # For the method: plot_for_back_ward_trajectories
 sns.set()
 
-PERIOD_PLOT_VAL = 100
+PERIOD_PLOT_VAL = 5
 
-PLOT_DIFFUSION_FIG, PLOT_DIFFUSION_AXES = plt.subplots(1, 2, sharey=True)
+
 NUM_STEPS_DIFFUSION_2_CONSIDER = 8
 # Adding 1 for the zero at the beginning.
 NUM_STEPS_DIFFUSION_2_CONSIDER += 1
 
+# Type annotation for a model that takes two tensors (x_t, time_step) and returns a tensor
+ScoreNetworkType = typing.Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 
-class DiffPCFGANTrainer(Trainer):
+
+class DiffPCFGANTrainer(LightningModule):
 
     @staticmethod
     def get_noise_vector(shape: typing.Tuple[int, ...], device: str) -> torch.Tensor:
@@ -145,49 +148,49 @@ class DiffPCFGANTrainer(Trainer):
 
     def __init__(
         self,
-        data_train,
-        data_val,
-        score_network: nn.Module,
-        config,
-        learning_rate_gen,
-        learning_rate_disc,
-        num_D_steps_per_G_step,
-        num_samples_pcf,
-        hidden_dim_pcf,
-        num_diffusion_steps,
-        use_fixed_measure_discriminator_pcfd=False,
+        data_train: torch.Tensor,
+        data_val: torch.Tensor,
+        score_network: ScoreNetworkType,
+        config: dict,
+        learning_rate_gen: float,
+        learning_rate_disc: float,
+        num_D_steps_per_G_step: int,
+        num_samples_pcf: int,
+        hidden_dim_pcf: int,
+        num_diffusion_steps: int,
+        data_type: DataType,
+        use_fixed_measure_discriminator_pcfd: bool = False,
     ):
         # score_network is used to denoise the data and will be called as score_net(data, time).
-        super().__init__(
-            test_metrics_train=None,
-            test_metrics_test=None,
-            feature_dim_time_series=config.input_dim,
-        )
+
+        super().__init__()
+
+        self.data_type: DataType = data_type
 
         # Parameter for pytorch lightning
-        self.automatic_optimization = False
+        self.automatic_optimization: bool = False
 
         # Training params
         self.config = config
-        self.lr_gen = learning_rate_gen
-        self.lr_disc = learning_rate_disc
+        self.lr_gen: float = learning_rate_gen
+        self.lr_disc: float = learning_rate_disc
 
         # Score Network Params
-        self.score_network = score_network
+        self.score_network: ScoreNetworkType = score_network
 
         # Discriminator Params
-        self.num_samples_pcf = num_samples_pcf
-        self.hidden_dim_pcf = hidden_dim_pcf
+        self.num_samples_pcf: int = num_samples_pcf
+        self.hidden_dim_pcf: int = hidden_dim_pcf
         self.discriminator = PCFEmpiricalMeasure(
             num_samples=self.num_samples_pcf,
             hidden_size=self.hidden_dim_pcf,
             # TODO 13/08/2024 nie_k: instead of input_dim, set time_series_for_compar_dim
             input_size=self.config.input_dim * self.config.n_lags + 1,
         )
-        self.D_steps_per_G_step = num_D_steps_per_G_step
+        self.D_steps_per_G_step: int = num_D_steps_per_G_step
         self.use_fixed_measure_discriminator_pcfd = use_fixed_measure_discriminator_pcfd
 
-        self.output_dir_images = config.exp_dir
+        self.output_dir_images: str = config.exp_dir
 
         # Diffusion:
         self.diffusion_process = ContinuousDiffusionProcess(
@@ -195,21 +198,58 @@ class DiffPCFGANTrainer(Trainer):
             schedule="cosine",
             sde_type=SDEType.VP,
         )
-        self.num_diffusion_steps = num_diffusion_steps
+        self.num_diffusion_steps: int = num_diffusion_steps
 
         self.sampling_parser: typing.Optional[DiffusionSequenceParser] = (
             TruncationParser(NUM_STEPS_DIFFUSION_2_CONSIDER)
         )
 
+        ####
+        # WIP to explain:
+        # we pass to the histo loss the data that we are interested in. This
+        # might be different from the data we input. Hence, there should
+        # be a mechanism that goes from data input to data interested in.
+        # On the generation side, we create these data points that we are interested in.
+        # In that regard, we know the number of features;
+        if (
+            self.data_type is DataType.ONE_D
+            or self.data_type is DataType.TWO_D
+            or self.data_type is DataType.THREE_D
+        ):
+            self.num_axes_per_samples = 1
+        else:
+            self.num_axes_per_samples = data_train.shape[-1]
         ### Loses
         self.use_diffusion_score_matching_loss = True
-        self.reconstruction_loss = torch.nn.MSELoss()
+        self.L2_loss = torch.nn.MSELoss()
         # Instantiate the HistogramLoss
         self.train_histo_loss = HistogramLoss(
             data_train, int(round(2.0 * math.pow(data_train.shape[0], 1.0 / 3.0), 0))
         )
         self.val_histo_loss = HistogramLoss(
             data_val, int(round(2.0 * math.pow(data_val.shape[0], 1.0 / 3.0), 0))
+        )
+
+        # Initialize the axes for plotting the trajectories (backward and forward, 2 axes).
+        self.plot_diffusion_fig, self.plot_diffusion_axes = plt.subplots(
+            1, 2, sharey=True
+        )
+        # Initialize the axes for plotting the samples. One axe per feature.
+        self.plot_samples_fig, self.plot_samples_axes = plt.subplots(
+            1, self.num_axes_per_samples
+        )
+        # Just make sure it is a list.
+        if self.num_axes_per_samples == 1:
+            self.plot_samples_axes = [self.plot_samples_axes]
+
+        # Initialize the axes for plotting the evolution of the diffusion samples
+        NUM_PLOT_EVOLUTION_DIFF = 5
+        self.plot_evol_fig, self.plot_evol_axes = plt.subplots(
+            self.num_axes_per_samples, NUM_PLOT_EVOLUTION_DIFF, figsize=[12.6, 4.8]
+        )
+        # Reshape into a matrix format which is easy to handle for plots.
+        self.plot_evol_axes = self.plot_evol_axes.reshape(
+            self.num_axes_per_samples, NUM_PLOT_EVOLUTION_DIFF
         )
         return
 
@@ -292,37 +332,14 @@ class DiffPCFGANTrainer(Trainer):
                 _ = self._training_step_disc(optim_discr, targets)
 
         # Discriminator and Generator share the same loss so no need to report both.
-        self.log(
-            name="train_pcfd",
-            value=losses_as_dict["train_pcfd"],
-            prog_bar=True,
-            on_step=False,
-            on_epoch=True,
+        self._log_all_metrics(
+            {
+                "pcfd": losses_as_dict["train_pcfd"],
+                "score_matching": losses_as_dict["train_score_matching"],
+                "epdf": losses_as_dict["train_epdf"],
+            },
+            "train_",
         )
-        self.log(
-            name="train_reconst",
-            value=losses_as_dict["train_reconst"],
-            prog_bar=True,
-            on_step=False,
-            on_epoch=True,
-        )
-
-        self.log(
-            name="train_score_matching",
-            value=losses_as_dict["train_score_matching"],
-            prog_bar=True,
-            on_step=False,
-            on_epoch=True,
-        )
-
-        self.log(
-            name="train_epdf",
-            value=losses_as_dict["train_epdf"],
-            prog_bar=True,
-            on_step=False,
-            on_epoch=True,
-        )
-
         return
 
     def validation_step(self, batch, batch_nb):
@@ -352,59 +369,71 @@ class DiffPCFGANTrainer(Trainer):
             denoised_diffused_targets4pcfd,
             lambda_y=0.0,
         )
-        self.log(
-            name="val_pcfd",
-            value=loss_gen,
-            prog_bar=True,
-            on_step=False,
-            on_epoch=True,
-        )
-
-        loss_gen_reconst = self.reconstruction_loss(
-            diffused_targets[:, 0], denoised_diffused_targets[:, 0]
-        )
-        self.log(
-            name="val_reconst",
-            value=loss_gen_reconst,
-            prog_bar=True,
-            on_step=False,
-            on_epoch=True,
-        )
-
         loss_gen_score_matching = self._compute_score_matching_loss(targets)
-        self.log(
-            name="val_score_matching",
-            value=loss_gen_score_matching,
-            prog_bar=True,
-            on_step=False,
-            on_epoch=True,
-        )
-
         loss_gen_epdf = self.val_histo_loss(denoised_diffused_targets[:, :1])
-        self.log(
-            name="val_epdf",
-            value=loss_gen_epdf,
-            prog_bar=True,
-            on_step=False,
-            on_epoch=True,
+
+        self._log_all_metrics(
+            {
+                "pcfd": loss_gen,
+                "score_matching": loss_gen_score_matching,
+                "epdf": loss_gen_epdf,
+            },
+            "val_",
         )
 
         # TODO 11/08/2024 nie_k: A bit of a hack, I usually code this better but will do the trick for now.
         # TODO 29/08/2024 nie_k: The plot need to be change depending on dataset (manually) and also would not work for sequences
         if not (self.current_epoch + 1) % PERIOD_PLOT_VAL:
-            where_image_is_saved = (
-                self.output_dir_images
-                + f"pred_vs_true_epoch_{str(self.current_epoch + 1)}"
-            )
-            self.evaluate(
-                denoised_diffused_targets[:, 0],
-                targets[:, 0],
-                where_image_is_saved,
-            )
+            # Clear axes before plotting
+            self._clear_axes()
+
+            self.evaluate(denoised_diffused_targets, diffused_targets)
 
             self.plot_for_back_ward_trajectories(
                 denoised_diffused_targets, diffused_targets
             )
+            plt.pause(0.01)
+        return
+
+    def evaluate(self, backward_trajectory, forward_trajectory):
+        path_img_saved_prediction = (
+            self.output_dir_images + f"pred_vs_true_epoch_{str(self.current_epoch + 1)}"
+        )
+
+        path_img_saved_diffusion_evol = (
+            self.output_dir_images + f"diff_evol_epoch_{str(self.current_epoch + 1)}"
+        )
+
+        if self.data_type.plot_method:
+            # Call the plotting function
+            self.data_type.plot_method(
+                forward_trajectory[:, 0],
+                backward_trajectory[:, 0],
+                self.plot_samples_axes,
+                path_img_saved_prediction,
+                True,
+            )
+        else:
+            raise ValueError(f"Unsupported data type: {self.data_type}")
+
+        # Generate a list of evenly spaced indices across the diffusion steps
+        steps_for_plot = np.linspace(
+            0, self.num_diffusion_steps - 1, self.plot_evol_axes.shape[1], dtype=int
+        )
+
+        for i, step in enumerate(steps_for_plot):
+            self.data_type.plot_method(
+                forward_trajectory[:, step],
+                backward_trajectory[:, step],
+                self.plot_evol_axes[:, i],
+                None,
+                False,
+            )
+            self.plot_evol_axes[0, i].set_title(
+                f"Step {step}/{self.num_diffusion_steps - 1}"
+            )
+        self.plot_evol_fig.tight_layout()
+        savefig(self.plot_evol_fig, path_img_saved_diffusion_evol)
         return
 
     def plot_for_back_ward_trajectories(
@@ -420,40 +449,39 @@ class DiffPCFGANTrainer(Trainer):
         denoised_diffused_targets = denoised_diffused_targets.detach().cpu().numpy()
         diffused_targets = diffused_targets.detach().cpu().numpy()
 
-        PLOT_DIFFUSION_AXES[0].clear()
-        PLOT_DIFFUSION_AXES[1].clear()
+        diffusion_steps = np.arange(denoised_diffused_targets.shape[1])
 
-        # Shift by one because we added a trailing zero to the sequences.
-        diffusion_steps = np.arange(-1, denoised_diffused_targets.shape[1] - 1)
-
+        ### Forward
         for element_dataset in range(diffused_targets.shape[0]):
-            PLOT_DIFFUSION_AXES[0].plot(
+            self.plot_diffusion_axes[0].plot(
                 diffusion_steps,
                 diffused_targets[element_dataset, :, 0],
                 linewidth=1.0,
             )
-        PLOT_DIFFUSION_AXES[0].set_title("Forward Path")
-        PLOT_DIFFUSION_AXES[0].set_xlabel("Diffusion Step")
+        self.plot_diffusion_axes[0].set_title("Forward Path")
+        self.plot_diffusion_axes[0].set_xlabel("Diffusion Step")
+
+        ### Backward
         for element_dataset in range(denoised_diffused_targets.shape[0]):
-            PLOT_DIFFUSION_AXES[1].plot(
-                diffusion_steps[::-1],
+            self.plot_diffusion_axes[1].plot(
+                diffusion_steps,
                 denoised_diffused_targets[element_dataset, :, 0],
                 linewidth=1.0,
             )
-        # Reverse the x-ticks and labels
-        # WIP: might lead to too many ticks. See how to handle that.
-        PLOT_DIFFUSION_AXES[0].set_xticks(diffusion_steps)
-        PLOT_DIFFUSION_AXES[0].set_xticklabels(diffusion_steps)
-        PLOT_DIFFUSION_AXES[1].set_xticks(diffusion_steps[::-1])
-        PLOT_DIFFUSION_AXES[1].set_xticklabels(diffusion_steps)
-        PLOT_DIFFUSION_AXES[1].set_title("Backward Path")
-        PLOT_DIFFUSION_AXES[1].set_xlabel("Diffusion Step")
-        PLOT_DIFFUSION_FIG.suptitle(
-            f"Comparison Diffusion Trajectories for n={diffused_targets.shape[0]}. \nThe distribution are matched over the first {NUM_STEPS_DIFFUSION_2_CONSIDER} steps."
+        self.plot_diffusion_axes[1].invert_xaxis()  # Automatically reverse the x-axis
+
+        self.plot_diffusion_axes[1].set_title("Backward Path")
+        self.plot_diffusion_axes[1].set_xlabel("Diffusion Step")
+
+        # Set figure title and layout
+        self.plot_diffusion_fig.suptitle(
+            f"Comparison Diffusion Trajectories for n={diffused_targets.shape[0]}. \n"
+            f"The distributions are matched over the first {NUM_STEPS_DIFFUSION_2_CONSIDER} steps."
         )
-        PLOT_DIFFUSION_FIG.tight_layout()
+        self.plot_diffusion_fig.tight_layout()
+
         savefig(
-            PLOT_DIFFUSION_FIG,
+            self.plot_diffusion_fig,
             self.output_dir_images + f"trajectories_{str(self.current_epoch + 1)}.png",
         )
         return
@@ -498,11 +526,7 @@ class DiffPCFGANTrainer(Trainer):
             denoised_diffused_targets4pcfd,
             lambda_y=0.0,
         )
-        loss_gen_reconstruction = self.reconstruction_loss(
-            diffused_targets[:, 0], denoised_diffused_targets[:, 0]
-        )
-
-        total_loss = loss_gen + 0.1 * loss_gen_reconstruction
+        total_loss = loss_gen
 
         loss_gen_score_matching = self._compute_score_matching_loss(targets)
         if self.use_diffusion_score_matching_loss:
@@ -514,7 +538,6 @@ class DiffPCFGANTrainer(Trainer):
         loss_gen_epdf = self.train_histo_loss(denoised_diffused_targets[:, :1])
         return {
             "train_pcfd": loss_gen,
-            "train_reconst": loss_gen_reconstruction,
             "train_score_matching": loss_gen_score_matching,
             "train_epdf": loss_gen_epdf,
         }
@@ -599,6 +622,29 @@ class DiffPCFGANTrainer(Trainer):
         # NCSN score matching objective function (x_tilda - x) / sigma^2
         target = -noise / std
         loss_gen_score_matching = (
-            diffusion * diffusion * self.reconstruction_loss(pred_score, target)
+            diffusion * diffusion * self.L2_loss(pred_score, target)
         )
         return loss_gen_score_matching
+
+    def _log_all_metrics(self, metrics: typing.Dict[str, float], prefix: str):
+        # For convenience, we have a method here that will log all metrics appropriately. The only thing to pass is
+        # the prefix to the name of the metric, essentially "train_" or "val_".
+        for name, value in metrics.items():
+            self.log(
+                name=prefix + name,
+                value=value,
+                prog_bar=True,
+                on_step=False,
+                on_epoch=True,
+            )
+        return
+
+    def _clear_axes(self):
+        for ax in self.plot_diffusion_axes:
+            ax.clear()
+        for ax in self.plot_samples_axes:
+            ax.clear()
+        for ax_list in self.plot_evol_axes:
+            for ax in ax_list:
+                ax.clear()
+        return
