@@ -24,9 +24,9 @@ from src.differentialequations.diffusionprocess_continuous import (
 # For the method: plot_for_back_ward_trajectories
 sns.set()
 
-PERIOD_PLOT_VAL = 5
+PERIOD_PLOT_VAL = 100
 
-
+### WIP SIMUL_VARIABLES CHANGE THESE STEPS, DO 8, 32 and 64
 NUM_STEPS_DIFFUSION_2_CONSIDER = 8
 # Adding 1 for the zero at the beginning.
 NUM_STEPS_DIFFUSION_2_CONSIDER += 1
@@ -200,9 +200,11 @@ class DiffPCFGANTrainer(LightningModule):
         )
         self.num_diffusion_steps: int = num_diffusion_steps
 
+        ####### WIP CHANGE THIS SIMUL_VARIABLES
         self.sampling_parser: typing.Optional[DiffusionSequenceParser] = (
             TruncationParser(NUM_STEPS_DIFFUSION_2_CONSIDER)
         )
+        # self.sampling_parser : typing.Optional[DiffusionSequenceParser] = SubsamplingParser(NUM_STEPS_DIFFUSION_2_CONSIDER)
 
         ####
         # WIP to explain:
@@ -220,7 +222,7 @@ class DiffPCFGANTrainer(LightningModule):
         else:
             self.num_axes_per_samples = data_train.shape[-1]
         ### Loses
-        self.use_diffusion_score_matching_loss = True
+        self.use_diffusion_score_matching_loss = False
         self.L2_loss = torch.nn.MSELoss()
         # Instantiate the HistogramLoss
         self.train_histo_loss = HistogramLoss(

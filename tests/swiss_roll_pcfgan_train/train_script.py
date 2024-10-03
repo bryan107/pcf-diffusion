@@ -33,7 +33,8 @@ from src.utils.utils_os import factory_fct_linked_path, remove_files_from_dir, s
 sns.set()
 seed_everything(142, workers=True)
 
-datamodel_name = "pcfgan"
+# SIMUL_VARIABLES
+datamodel_name = "pcfgan_truncparse_pure_pcfd"
 path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/swiss_roll_pcfgan_train")
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
 
@@ -127,7 +128,8 @@ model = DiffPCFGANTrainer(
     num_D_steps_per_G_step=config.D_steps_per_G_step,
     num_samples_pcf=config.M_num_samples,
     hidden_dim_pcf=config.M_hidden_dim,
-    num_diffusion_steps=64,
+    ### WIP SIMUL_VARIABLES CHANGE THAT DO 32, 64, 128.
+    num_diffusion_steps=32,
     use_fixed_measure_discriminator_pcfd=True,
     data_type=DataType.TWO_D,
 )
