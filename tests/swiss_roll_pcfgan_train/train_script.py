@@ -34,7 +34,7 @@ sns.set()
 seed_everything(142, workers=True)
 
 # SIMUL_VARIABLES
-datamodel_name = "pcfgan_truncparse_pure_pcfd_32_32"
+datamodel_name = "pcfgan_truncparse_pure_pcfd_32_32_lr"
 path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/swiss_roll_pcfgan_train")
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
 
@@ -55,7 +55,7 @@ class Config:
 
 config = {
     "device": "cuda",
-    "lr_G": 0.001,
+    "lr_G": 0.000_1,
     "lr_D": 0.001,
     "D_steps_per_G_step": 1,
     "G_input_dim": 2,
