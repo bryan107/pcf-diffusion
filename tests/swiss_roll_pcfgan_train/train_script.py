@@ -42,7 +42,7 @@ datamodel_path = path2file_linker(["out", datamodel_name, ""])
 remove_files_from_dir(datamodel_path)
 ###############################################
 
-data = SwissRoll_Dataset(1000, True)
+data = SwissRoll_Dataset(500, True)
 
 
 class Config:
@@ -99,7 +99,7 @@ logger_custom = TrainingHistoryLogger(
     period_logging_pt_lightning=period_log,
     period_in_logs_plotting=period_in_logs_plotting,
 )
-epochs = 5001
+epochs = 10_001
 
 trainer = Trainer(
     default_root_dir=path2file_linker(["out"]),
