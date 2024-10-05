@@ -54,7 +54,7 @@ class Config:
 
 config = {
     "device": "cuda",
-    "lr_G": 0.001,
+    "lr_G": 0.000_1,
     "lr_D": 0.001,
     "D_steps_per_G_step": 1,
     "G_input_dim": 2,
