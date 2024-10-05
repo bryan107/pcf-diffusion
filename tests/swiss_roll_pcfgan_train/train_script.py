@@ -42,7 +42,7 @@ datamodel_path = path2file_linker(["out", datamodel_name, ""])
 remove_files_from_dir(datamodel_path)
 ###############################################
 
-data = SwissRoll_Dataset(1000, True)
+data = SwissRoll_Dataset(800, True)
 
 
 class Config:
@@ -60,8 +60,8 @@ config = {
     "D_steps_per_G_step": 1,
     "G_input_dim": 2,
     "input_dim": data.inputs.shape[2],
-    "M_num_samples": 16,
-    "M_hidden_dim": 10,
+    "M_num_samples": 8,
+    "M_hidden_dim": 8,
     # WIP NUM ELEMENT IN SEQ?
     "n_lags": data.inputs.shape[1],
     "exp_dir": datamodel_path,
@@ -78,7 +78,7 @@ early_stop_val_loss = EarlyStopping(
     mode="min",
 )
 chkpt = ModelCheckpoint(
-    monitor="val_pcfd",
+    monitor="val_epdf",
     mode="min",
     verbose=True,
     save_top_k=1,
@@ -130,7 +130,7 @@ model = DiffPCFGANTrainer(
     hidden_dim_pcf=config.M_hidden_dim,
     ### WIP SIMUL_VARIABLES CHANGE THAT DO 32, 64, 128.
     num_diffusion_steps=32,
-    use_fixed_measure_discriminator_pcfd=True,
+    use_fixed_measure_discriminator_pcfd=False,
     data_type=DataType.TWO_D,
 )
 logger.info("Model created.")
