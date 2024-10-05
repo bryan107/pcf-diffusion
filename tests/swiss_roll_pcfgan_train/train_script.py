@@ -60,7 +60,7 @@ config = {
     "G_input_dim": 2,
     "input_dim": data.inputs.shape[2],
     "M_num_samples": 16,
-    "M_hidden_dim": 12,
+    "M_hidden_dim": 10,
     # WIP NUM ELEMENT IN SEQ?
     "n_lags": data.inputs.shape[1],
     "exp_dir": datamodel_path,
@@ -129,7 +129,7 @@ model = DiffPCFGANTrainer(
     num_D_steps_per_G_step=config.D_steps_per_G_step,
     num_samples_pcf=config.M_num_samples,
     hidden_dim_pcf=config.M_hidden_dim,
-    num_diffusion_steps=128,
+    num_diffusion_steps=32,
     use_fixed_measure_discriminator_pcfd=False,
 )
 logger.info("Model created.")

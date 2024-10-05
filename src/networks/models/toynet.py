@@ -15,7 +15,7 @@ class ToyNet(nn.Module):
     def __init__(self, data_dim):
         super().__init__()
         self.input_dim = data_dim
-        self.hidden_dim = 1024
+        self.hidden_dim = 512
         self.time_embed_dim = 32
         self.output_dim = data_dim
 
