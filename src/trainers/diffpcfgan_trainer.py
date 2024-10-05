@@ -510,7 +510,7 @@ class DiffPCFGANTrainer(LightningModule):
         diffused_targets: torch.Tensor = self._get_forward_path(targets, [])
         denoised_diffused_targets: torch.Tensor = self.get_backward_path(
             noise_start_seq_z=diffused_targets[-1],
-            proba_teacher_forcing=0.0,
+            proba_teacher_forcing=self.proba_teacher_forcing,
             teacher_forcing_inputs=diffused_targets,
         )
 
@@ -557,7 +557,7 @@ class DiffPCFGANTrainer(LightningModule):
             diffused_targets: torch.Tensor = self._get_forward_path(targets, [])
             denoised_diffused_targets: torch.Tensor = self.get_backward_path(
                 noise_start_seq_z=diffused_targets[-1],
-                proba_teacher_forcing=0.0,
+                proba_teacher_forcing=self.proba_teacher_forcing,
                 teacher_forcing_inputs=diffused_targets,
             )
 
