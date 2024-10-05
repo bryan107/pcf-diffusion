@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 from src.diffusionsequenceparser import (
     DiffusionSequenceParser,
-    TruncationParser,
+    SubsamplingParser,
 )
 from src.pcfempiricalmeasure import PCFEmpiricalMeasure
 from src.differentialequations.diffusionprocess_continuous import (
@@ -204,12 +204,12 @@ class DiffPCFGANTrainer(LightningModule):
         self.num_diffusion_steps: int = num_diffusion_steps
 
         ####### WIP CHANGE THIS SIMUL_VARIABLES
-        self.sampling_parser: typing.Optional[DiffusionSequenceParser] = (
-            TruncationParser(NUM_STEPS_DIFFUSION_2_CONSIDER)
-        )
         # self.sampling_parser: typing.Optional[DiffusionSequenceParser] = (
-        #     SubsamplingParser(NUM_STEPS_DIFFUSION_2_CONSIDER)
+        #     TruncationParser(NUM_STEPS_DIFFUSION_2_CONSIDER)
         # )
+        self.sampling_parser: typing.Optional[DiffusionSequenceParser] = (
+            SubsamplingParser(NUM_STEPS_DIFFUSION_2_CONSIDER)
+        )
 
         ####
         # WIP to explain:
