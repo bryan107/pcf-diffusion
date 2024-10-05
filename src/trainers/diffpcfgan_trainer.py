@@ -498,14 +498,7 @@ class DiffPCFGANTrainer(LightningModule):
 
     @property
     def proba_teacher_forcing(self):
-        return 0.5 * (
-            1
-            + torch.cos(
-                torch.tensor(
-                    self.current_epoch * math.pi / (self.trainer.max_epochs // 2)
-                )
-            )
-        )
+        return 0
 
     def _training_step_gen(
         self, optim_gen, targets: torch.Tensor
