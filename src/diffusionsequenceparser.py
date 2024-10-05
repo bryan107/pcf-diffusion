@@ -75,7 +75,7 @@ class TruncationParser(DiffusionSequenceParser):
             torch.Tensor: The truncated diffusion paths tensor.
         """
         self.validate_input(diffusion_paths, self.num_steps_to_consider)
-        return diffusion_paths[:, -self.num_steps_to_consider :]
+        return diffusion_paths[:, : self.num_steps_to_consider]
 
 
 class SubsamplingParser(DiffusionSequenceParser):
