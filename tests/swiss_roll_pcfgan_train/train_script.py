@@ -34,7 +34,7 @@ sns.set()
 seed_everything(142, workers=True)
 
 # SIMUL_VARIABLES
-datamodel_name = "pcfgan_truncparse_pure_pcfd_32_32_noteachforce"
+datamodel_name = "pcfgan_truncparse_pure_pcfd_32_8_teachforce"
 path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/swiss_roll_pcfgan_train")
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
 

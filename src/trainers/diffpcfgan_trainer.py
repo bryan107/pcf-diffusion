@@ -30,7 +30,7 @@ sns.set()
 PERIOD_PLOT_VAL = 100
 
 ### WIP SIMUL_VARIABLES CHANGE THESE STEPS, DO 8, 32 and 64
-NUM_STEPS_DIFFUSION_2_CONSIDER = 32
+NUM_STEPS_DIFFUSION_2_CONSIDER = 8
 # Adding 1 for the zero at the beginning.
 NUM_STEPS_DIFFUSION_2_CONSIDER += 1
 
@@ -498,7 +498,14 @@ class DiffPCFGANTrainer(LightningModule):
 
     @property
     def proba_teacher_forcing(self):
-        return 0
+        return 0.5 * (
+            1
+            + torch.cos(
+                torch.tensor(
+                    self.current_epoch * math.pi / (self.trainer.max_epochs // 2)
+                )
+            )
+        )
 
     def _training_step_gen(
         self, optim_gen, targets: torch.Tensor
