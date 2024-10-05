@@ -71,14 +71,14 @@ config = Config(config)
 period_log: int = 5
 period_in_logs_plotting: int = 40
 early_stop_val_loss = EarlyStopping(
-    monitor="train_pcfd",
+    monitor="val_epdf",
     min_delta=1e-4,
-    patience=2000 // period_log,
+    patience=3000 // period_log,
     verbose=True,
     mode="min",
 )
 chkpt = ModelCheckpoint(
-    monitor="train_pcfd",
+    monitor="val_pcfd",
     mode="min",
     verbose=True,
     save_top_k=1,

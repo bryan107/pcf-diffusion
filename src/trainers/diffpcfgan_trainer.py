@@ -14,7 +14,10 @@ from src.utils.utils_os import savefig
 
 logger = logging.getLogger(__name__)
 
-from src.diffusionsequenceparser import DiffusionSequenceParser, TruncationParser
+from src.diffusionsequenceparser import (
+    DiffusionSequenceParser,
+    TruncationParser,
+)
 from src.pcfempiricalmeasure import PCFEmpiricalMeasure
 from src.differentialequations.diffusionprocess_continuous import (
     SDEType,
@@ -204,7 +207,9 @@ class DiffPCFGANTrainer(LightningModule):
         self.sampling_parser: typing.Optional[DiffusionSequenceParser] = (
             TruncationParser(NUM_STEPS_DIFFUSION_2_CONSIDER)
         )
-        # self.sampling_parser : typing.Optional[DiffusionSequenceParser] = SubsamplingParser(NUM_STEPS_DIFFUSION_2_CONSIDER)
+        # self.sampling_parser: typing.Optional[DiffusionSequenceParser] = (
+        #     SubsamplingParser(NUM_STEPS_DIFFUSION_2_CONSIDER)
+        # )
 
         ####
         # WIP to explain:
