@@ -391,7 +391,7 @@ class DiffPCFGANTrainer(Trainer):
             denoised_diffused_targets[:, :-1][:, :NUM_STEPS_DIFFUSION_2_CONSIDER],
             lambda_y=0.0,
         )
-        # total_loss = loss_gen
+        total_loss = loss_gen
 
         loss_gen_reconstruction = self.reconstruction_loss(
             diffused_targets[:, 1, :-1], denoised_diffused_targets[:, 1, :-1]
@@ -400,7 +400,7 @@ class DiffPCFGANTrainer(Trainer):
 
         loss_gen_score_matching = self._compute_score_matching_loss(targets)
         # if self.use_diffusion_score_matching_loss:
-        total_loss = loss_gen_score_matching
+        # total_loss = loss_gen_score_matching
 
         self.manual_backward(total_loss)
         optim_gen.step()
