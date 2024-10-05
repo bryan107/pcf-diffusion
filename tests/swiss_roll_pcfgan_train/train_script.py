@@ -70,14 +70,14 @@ config = Config(config)
 period_log: int = 5
 period_in_logs_plotting: int = 40
 early_stop_val_loss = EarlyStopping(
-    monitor="train_pcfd",
+    monitor="val_epdf",
     min_delta=1e-4,
-    patience=2000 // period_log,
+    patience=3000 // period_log,
     verbose=True,
     mode="min",
 )
 chkpt = ModelCheckpoint(
-    monitor="train_pcfd",
+    monitor="val_epdf",
     mode="min",
     verbose=True,
     save_top_k=1,
@@ -127,7 +127,7 @@ model = DiffPCFGANTrainer(
     num_D_steps_per_G_step=config.D_steps_per_G_step,
     num_samples_pcf=config.M_num_samples,
     hidden_dim_pcf=config.M_hidden_dim,
-    num_diffusion_steps=8,
+    num_diffusion_steps=32,
     use_fixed_measure_discriminator_pcfd=True,
     data_type=DataType.TWO_D,
 )
