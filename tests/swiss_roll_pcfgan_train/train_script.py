@@ -32,7 +32,7 @@ from src.utils.utils_os import factory_fct_linked_path, remove_files_from_dir, s
 sns.set()
 seed_everything(142, workers=True)
 
-datamodel_name = "pcfgan_long_diff_scorematching_loss"
+datamodel_name = "pcfgan_test_is_it_working"
 path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/swiss_roll_pcfgan_train")
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
 filename_model_saved = "pcfgan_1"
@@ -100,7 +100,7 @@ logger_custom = TrainingHistoryLogger(
     period_logging_pt_lightning=period_log,
     period_in_logs_plotting=period_in_logs_plotting,
 )
-epochs = 5001
+epochs = 10_001
 
 trainer = Trainer(
     default_root_dir=path2file_linker(["out"]),
