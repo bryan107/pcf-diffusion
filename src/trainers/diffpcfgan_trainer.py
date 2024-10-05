@@ -371,7 +371,10 @@ class DiffPCFGANTrainer(LightningModule):
             denoised_diffused_targets4pcfd,
             lambda_y=0.0,
         )
-        loss_gen_score_matching = self._compute_score_matching_loss(targets)
+
+        loss_gen_score_matching = 0.0
+        if self.use_diffusion_score_matching_loss:
+            loss_gen_score_matching = self._compute_score_matching_loss(targets)
         loss_gen_epdf = self.val_histo_loss(denoised_diffused_targets[:, :1])
 
         self._log_all_metrics(
@@ -530,8 +533,9 @@ class DiffPCFGANTrainer(LightningModule):
         )
         total_loss = loss_gen
 
-        loss_gen_score_matching = self._compute_score_matching_loss(targets)
+        loss_gen_score_matching = 0.0
         if self.use_diffusion_score_matching_loss:
+            loss_gen_score_matching = self._compute_score_matching_loss(targets)
             total_loss = total_loss + 0.1 * loss_gen_score_matching
 
         self.manual_backward(total_loss)

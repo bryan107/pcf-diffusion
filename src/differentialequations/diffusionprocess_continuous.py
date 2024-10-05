@@ -27,7 +27,7 @@ class ContinuousDiffusionProcess(nn.Module):
         schedule: str,
         sde_type: SDEType = SDEType.VP,
         sde_info: Dict[SDEType, Dict[str, float]] = {
-            SDEType.VP: {"beta_min": torch.tensor(0.1), "beta_max": torch.tensor(2.0)},
+            SDEType.VP: {"beta_min": torch.tensor(0.1), "beta_max": torch.tensor(4.0)},
             SDEType.SUB_VP: {
                 "beta_min": torch.tensor(0.1),
                 "beta_max": torch.tensor(20.0),

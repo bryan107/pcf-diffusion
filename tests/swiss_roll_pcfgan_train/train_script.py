@@ -61,7 +61,7 @@ config = {
     "G_input_dim": 2,
     "input_dim": data.inputs.shape[2],
     "M_num_samples": 16,
-    "M_hidden_dim": 12,
+    "M_hidden_dim": 10,
     # WIP NUM ELEMENT IN SEQ?
     "n_lags": data.inputs.shape[1],
     "exp_dir": datamodel_path,
