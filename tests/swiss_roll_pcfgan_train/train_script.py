@@ -57,12 +57,12 @@ class Config:
 
 config = {
     "device": "cuda",
-    "lr_G": 0.003,
+    "lr_G": 0.0008,
     "lr_D": 0.002,
     "D_steps_per_G_step": 1,
     "G_input_dim": 2,
     "input_dim": data.inputs.shape[2],
-    "M_num_samples": 12,
+    "M_num_samples": 10,
     "M_hidden_dim": 8,
     # WIP NUM ELEMENT IN SEQ?
     "n_lags": data.inputs.shape[1],

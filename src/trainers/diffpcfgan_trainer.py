@@ -7,7 +7,7 @@ import numpy as np
 import seaborn as sns
 import torch
 from pytorch_lightning import LightningModule
-from torch.optim.lr_scheduler import MultiStepLR
+from torch.optim.lr_scheduler import MultiStepLR, CosineAnnealingWarmRestarts
 
 from src.metrics.epdf import HistogramLoss
 from src.trainers.visual_data import DataType
@@ -179,6 +179,9 @@ class DiffPCFGANTrainer(LightningModule):
         self.lr_gen: float = learning_rate_gen
         self.lr_disc: float = learning_rate_disc
 
+        self.choice_scheduler: str = "Cosine"
+        self.choice_scheduler: str = "Step"
+
         # Score Network Params
         self.score_network: ScoreNetworkType = score_network
 
@@ -329,16 +332,21 @@ class DiffPCFGANTrainer(LightningModule):
             self.discriminator.parameters(), lr=self.lr_disc, weight_decay=0
         )
 
-        # A good rule of thumb is that if the max_epoch is 10k, patience is 3k, then you need to reduce the learning rate
-        # at least every 3k epoch.
-        schedul_optim_gen = MultiStepLR(
-            optim_gen,
-            milestones=[
-                2 * self.trainer.max_epochs // 5,
-                4 * self.trainer.max_epochs // 5,
-            ],
-            gamma=0.1,
-        )
+        if self.choice_scheduler == "Step":
+            # A good rule of thumb is that if the max_epoch is 10k, patience is 3k, then you need to reduce the learning rate
+            # at least every 3k epoch.
+            schedul_optim_gen = MultiStepLR(
+                optim_gen,
+                milestones=[
+                    2 * self.trainer.max_epochs // 5,
+                    4 * self.trainer.max_epochs // 5,
+                ],
+                gamma=0.4,
+            )
+        else:
+            schedul_optim_gen = CosineAnnealingWarmRestarts(
+                optim_gen, T_0=1000, T_mult=2
+            )
         return [optim_gen, optim_discr], [schedul_optim_gen]
 
     def training_step(self, batch, batch_nb):
