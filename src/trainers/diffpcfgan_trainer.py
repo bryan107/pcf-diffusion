@@ -29,10 +29,10 @@ from src.differentialequations.diffusionprocess_continuous import (
 # For the method: plot_for_back_ward_trajectories
 sns.set()
 
-PERIOD_PLOT_VAL = 10
+PERIOD_PLOT_VAL = 100
 
 ### WIP SIMUL_VARIABLES CHANGE THESE STEPS, DO 8, 32 and 64
-NUM_STEPS_DIFFUSION_2_CONSIDER = 8
+NUM_STEPS_DIFFUSION_2_CONSIDER = 32
 # Adding 1 for the zero at the beginning.
 NUM_STEPS_DIFFUSION_2_CONSIDER += 1
 
@@ -207,7 +207,7 @@ class DiffPCFGANTrainer(LightningModule):
         )
         self.num_diffusion_steps: int = num_diffusion_steps
 
-        self.sample_type = "Subsampling"
+        self.sample_type = "Truncation"
 
         ####### WIP CHANGE THIS SIMUL_VARIABLES
         if self.sample_type == "Truncation":

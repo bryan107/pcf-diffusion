@@ -36,7 +36,7 @@ sns.set()
 seed_everything(142, workers=True)
 
 # SIMUL_VARIABLES
-datamodel_name = "test"
+datamodel_name = "pcfgan_truncparse_pure_pcfd_32_32_teachforce"
 path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/swiss_roll_pcfgan_train")
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
 
@@ -44,7 +44,7 @@ datamodel_path = path2file_linker(["out", datamodel_name, ""])
 remove_files_from_dir(datamodel_path)
 ###############################################
 
-data = SwissRoll_Dataset(500, True)
+data = SwissRoll_Dataset(800, True)
 
 
 class Config:
@@ -71,7 +71,7 @@ config = {
 config = Config(config)
 
 period_log: int = 5
-period_in_logs_plotting: int = 10
+period_in_logs_plotting: int = 40
 early_stop_val_loss = EarlyStopping(
     monitor="val_epdf",
     min_delta=1e-4,
@@ -158,6 +158,7 @@ def termination_handler(signum, frame):
     sys.exit(0)
 
 
+# When the script is stopped softly (not using -9), we will wrap up the work.
 signal.signal(signal.SIGINT, termination_handler)
 signal.signal(signal.SIGTERM, termination_handler)
 
