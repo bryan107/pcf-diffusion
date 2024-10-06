@@ -521,7 +521,7 @@ class DiffPCFGANTrainer(LightningModule):
         - After reaching half of the maximum number of epochs, the probability is set to 0.
 
         """
-        if False:
+        if self.current_epoch < self.trainer.max_epochs // 2:
             return 0.5 * (
                 1
                 + torch.cos(
