@@ -8,6 +8,8 @@ It erases the folder before running the script.
 """
 
 import logging
+import signal
+import sys
 import time
 
 import numpy as np
@@ -139,16 +141,39 @@ logger.info("Model created.")
 #  #############################################################################
 #  Training
 
-start_time = time.perf_counter()
-trainer.fit(model, datamodule=data)
-train_time = np.round(time.perf_counter() - start_time, 2)
-print(
-    "Total time training: ",
-    train_time,
-    " seconds. In average, it took: ",
-    np.round(train_time / trainer.current_epoch, 4),
-    " seconds per epochs.",
-)
 
-savefig(logger_custom.fig, config.exp_dir + f"loss_history.png")
+### Catch errors etc:
+def terminating_operations():
+    savefig(logger_custom.fig, config.exp_dir + f"loss_history.png")
+    return
+
+
+# Signal handler to save the results if the program is interrupted.
+def termination_handler(signum, frame):
+    logger.critical(f"Signal {signum} received, saving data and exiting...")
+    try:
+        terminating_operations()
+    except Exception as e:
+        logger.error(f"Failed to save results: {e}")
+    sys.exit(0)
+
+
+signal.signal(signal.SIGINT, termination_handler)
+signal.signal(signal.SIGTERM, termination_handler)
+
+try:
+    start_time = time.perf_counter()
+    trainer.fit(model, datamodule=data)
+    train_time = np.round(time.perf_counter() - start_time, 2)
+    print(
+        "Total time training: ",
+        train_time,
+        " seconds. In average, it took: ",
+        np.round(train_time / trainer.current_epoch, 4),
+        " seconds per epochs.",
+    )
+except Exception as e:
+    logger.error(f"Training failed: {e}")
+finally:
+    terminating_operations()
 plt.show()
