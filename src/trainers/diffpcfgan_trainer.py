@@ -179,7 +179,7 @@ class DiffPCFGANTrainer(LightningModule):
         self.lr_gen: float = learning_rate_gen
         self.lr_disc: float = learning_rate_disc
 
-        self.choice_scheduler: str = "Cosine"
+        # self.choice_scheduler: str = "Cosine"
         self.choice_scheduler: str = "Step"
 
         # Score Network Params
@@ -207,8 +207,10 @@ class DiffPCFGANTrainer(LightningModule):
         )
         self.num_diffusion_steps: int = num_diffusion_steps
 
+        self.sample_type = "Subsampling"
+
         ####### WIP CHANGE THIS SIMUL_VARIABLES
-        if False:
+        if self.sample_type == "Truncation":
             self.sampling_parser: typing.Optional[DiffusionSequenceParser] = (
                 TruncationParser(NUM_STEPS_DIFFUSION_2_CONSIDER)
             )

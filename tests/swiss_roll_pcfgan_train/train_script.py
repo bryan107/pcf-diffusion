@@ -44,7 +44,7 @@ datamodel_path = path2file_linker(["out", datamodel_name, ""])
 remove_files_from_dir(datamodel_path)
 ###############################################
 
-data = SwissRoll_Dataset(1_000, True)
+data = SwissRoll_Dataset(800, True)
 
 
 class Config:
