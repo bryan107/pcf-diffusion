@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 
 from src.diffusionsequenceparser import (
     DiffusionSequenceParser,
-    SubsamplingParser, TruncationParser,
+    SubsamplingParser,
+    TruncationParser,
 )
 from src.pcfempiricalmeasure import PCFEmpiricalMeasure
 from src.differentialequations.diffusionprocess_continuous import (
@@ -31,7 +32,7 @@ sns.set()
 PERIOD_PLOT_VAL = 100
 
 ### WIP SIMUL_VARIABLES CHANGE THESE STEPS, DO 8, 32 and 64
-NUM_STEPS_DIFFUSION_2_CONSIDER = 8
+NUM_STEPS_DIFFUSION_2_CONSIDER = 32
 # Adding 1 for the zero at the beginning.
 NUM_STEPS_DIFFUSION_2_CONSIDER += 1
 
