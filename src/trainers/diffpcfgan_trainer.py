@@ -29,7 +29,7 @@ from src.differentialequations.diffusionprocess_continuous import (
 # For the method: plot_for_back_ward_trajectories
 sns.set()
 
-PERIOD_PLOT_VAL = 100
+PERIOD_PLOT_VAL = 10
 
 ### WIP SIMUL_VARIABLES CHANGE THESE STEPS, DO 8, 32 and 64
 NUM_STEPS_DIFFUSION_2_CONSIDER = 8

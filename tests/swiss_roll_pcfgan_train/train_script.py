@@ -36,7 +36,7 @@ sns.set()
 seed_everything(142, workers=True)
 
 # SIMUL_VARIABLES
-datamodel_name = "pcfgan_subparse_pure_pcfd_32_8"
+datamodel_name = "test"
 path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/swiss_roll_pcfgan_train")
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
 
@@ -44,7 +44,7 @@ datamodel_path = path2file_linker(["out", datamodel_name, ""])
 remove_files_from_dir(datamodel_path)
 ###############################################
 
-data = SwissRoll_Dataset(800, True)
+data = SwissRoll_Dataset(500, True)
 
 
 class Config:
@@ -71,7 +71,7 @@ config = {
 config = Config(config)
 
 period_log: int = 5
-period_in_logs_plotting: int = 40
+period_in_logs_plotting: int = 10
 early_stop_val_loss = EarlyStopping(
     monitor="val_epdf",
     min_delta=1e-4,
