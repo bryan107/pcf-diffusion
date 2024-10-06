@@ -7,15 +7,17 @@ import numpy as np
 import seaborn as sns
 import torch
 from pytorch_lightning import LightningModule
+from torch.optim.lr_scheduler import MultiStepLR, CosineAnnealingWarmRestarts
+
+logger = logging.getLogger(__name__)
 
 from src.metrics.epdf import HistogramLoss
 from src.trainers.visual_data import DataType
 from src.utils.utils_os import savefig
 
-logger = logging.getLogger(__name__)
-
 from src.diffusionsequenceparser import (
     DiffusionSequenceParser,
+    SubsamplingParser,
     TruncationParser,
 )
 from src.pcfempiricalmeasure import PCFEmpiricalMeasure
@@ -107,7 +109,6 @@ class DiffPCFGANTrainer(LightningModule):
         diffused_targets = diffused_targets[:-1]
         denoised_diffused_targets = denoised_diffused_targets[:-1]
 
-        # Remove last value that is identical.
         diffused_targets4pcfd = DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
             diffused_targets
         )
@@ -178,6 +179,9 @@ class DiffPCFGANTrainer(LightningModule):
         self.lr_gen: float = learning_rate_gen
         self.lr_disc: float = learning_rate_disc
 
+        # self.choice_scheduler: str = "Cosine"
+        self.choice_scheduler: str = "Step"
+
         # Score Network Params
         self.score_network: ScoreNetworkType = score_network
 
@@ -203,12 +207,16 @@ class DiffPCFGANTrainer(LightningModule):
         )
         self.num_diffusion_steps: int = num_diffusion_steps
 
-        self.sampling_parser: typing.Optional[DiffusionSequenceParser] = (
-            TruncationParser(NUM_STEPS_DIFFUSION_2_CONSIDER)
-        )
-        # self.sampling_parser: typing.Optional[DiffusionSequenceParser] = (
-        #     SubsamplingParser(NUM_STEPS_DIFFUSION_2_CONSIDER)
-        # )
+        self.sample_type = "Truncation"
+
+        if self.sample_type == "Truncation":
+            self.sampling_parser: typing.Optional[DiffusionSequenceParser] = (
+                TruncationParser(NUM_STEPS_DIFFUSION_2_CONSIDER)
+            )
+        else:
+            self.sampling_parser: typing.Optional[DiffusionSequenceParser] = (
+                SubsamplingParser(NUM_STEPS_DIFFUSION_2_CONSIDER)
+            )
 
         ####
         # WIP to explain:
@@ -324,7 +332,23 @@ class DiffPCFGANTrainer(LightningModule):
         optim_discr = torch.optim.Adam(
             self.discriminator.parameters(), lr=self.lr_disc, weight_decay=0
         )
-        return [optim_gen, optim_discr], []
+
+        if self.choice_scheduler == "Step":
+            # A good rule of thumb is that if the max_epoch is 10k, patience is 3k, then you need to reduce the learning rate
+            # at least every 3k epoch.
+            schedul_optim_gen = MultiStepLR(
+                optim_gen,
+                milestones=[
+                    2 * self.trainer.max_epochs // 5,
+                    4 * self.trainer.max_epochs // 5,
+                ],
+                gamma=0.4,
+            )
+        else:
+            schedul_optim_gen = CosineAnnealingWarmRestarts(
+                optim_gen, T_0=1000, T_mult=2
+            )
+        return [optim_gen, optim_discr], [schedul_optim_gen]
 
     def training_step(self, batch, batch_nb):
         targets = batch[0]
@@ -497,14 +521,25 @@ class DiffPCFGANTrainer(LightningModule):
 
     @property
     def proba_teacher_forcing(self):
-        return 0.5 * (
-            1
-            + torch.cos(
-                torch.tensor(
-                    self.current_epoch * math.pi / (self.trainer.max_epochs // 2)
+        """
+        During the first half of the training epochs, the probability smoothly decreases following
+        a cosine schedule. In the second half, the probability is fixed at zero.
+
+        - The cosine schedule is used for epochs in the range [0, max_epochs // 2).
+        - After reaching half of the maximum number of epochs, the probability is set to 0.
+
+        """
+        if self.current_epoch < self.trainer.max_epochs // 2:
+            return 0.5 * (
+                1
+                + torch.cos(
+                    torch.tensor(
+                        self.current_epoch * math.pi / (self.trainer.max_epochs // 2)
+                    )
                 )
             )
-        )
+        else:
+            return torch.tensor([0.0])
 
     def _training_step_gen(
         self, optim_gen, targets: torch.Tensor
