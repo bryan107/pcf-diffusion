@@ -42,7 +42,7 @@ datamodel_path = path2file_linker(["out", datamodel_name, ""])
 remove_files_from_dir(datamodel_path)
 ###############################################
 
-data = SwissRoll_Dataset(800, True)
+data = SwissRoll_Dataset(1_000, True)
 
 
 class Config:
@@ -55,12 +55,12 @@ class Config:
 
 config = {
     "device": "cuda",
-    "lr_G": 0.001,
-    "lr_D": 0.001,
+    "lr_G": 0.003,
+    "lr_D": 0.002,
     "D_steps_per_G_step": 1,
     "G_input_dim": 2,
     "input_dim": data.inputs.shape[2],
-    "M_num_samples": 8,
+    "M_num_samples": 12,
     "M_hidden_dim": 8,
     # WIP NUM ELEMENT IN SEQ?
     "n_lags": data.inputs.shape[1],
