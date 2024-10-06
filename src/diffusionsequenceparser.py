@@ -104,10 +104,11 @@ class SubsamplingParser(DiffusionSequenceParser):
             torch.Tensor: The subsequence of diffusion paths around the sampled time `t`.
         """
         sequence_length = diffusion_paths.shape[1]
-        self.validate_input(diffusion_paths, self.local_len + 1)
+        self.validate_input(diffusion_paths, self.local_len)
 
-        # Sample a valid time t that allows for local_size steps before it
-        t_sample = torch.randint(self.local_len, sequence_length, (1,)).item()
+        # Sample a valid time t that allows for local_size steps before it.
+        # We sample between local_len (so the length of the subsequence) until the total length.
+        t_sample = torch.randint(self.local_len, sequence_length + 1, (1,)).item()
 
         # Return the slice of the tensor from t_sample - local_size to t_sample
         return diffusion_paths[:, t_sample - self.local_len : t_sample]

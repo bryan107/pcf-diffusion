@@ -32,7 +32,7 @@ sns.set()
 PERIOD_PLOT_VAL = 100
 
 ### WIP SIMUL_VARIABLES CHANGE THESE STEPS, DO 8, 32 and 64
-NUM_STEPS_DIFFUSION_2_CONSIDER = 8
+NUM_STEPS_DIFFUSION_2_CONSIDER = 16
 # Adding 1 for the zero at the beginning.
 NUM_STEPS_DIFFUSION_2_CONSIDER += 1
 
@@ -109,7 +109,6 @@ class DiffPCFGANTrainer(LightningModule):
         diffused_targets = diffused_targets[:-1]
         denoised_diffused_targets = denoised_diffused_targets[:-1]
 
-        # Remove last value that is identical.
         diffused_targets4pcfd = DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
             diffused_targets
         )
@@ -206,7 +205,7 @@ class DiffPCFGANTrainer(LightningModule):
         self.num_diffusion_steps: int = num_diffusion_steps
 
         ####### WIP CHANGE THIS SIMUL_VARIABLES
-        if True:
+        if False:
             self.sampling_parser: typing.Optional[DiffusionSequenceParser] = (
                 TruncationParser(NUM_STEPS_DIFFUSION_2_CONSIDER)
             )
