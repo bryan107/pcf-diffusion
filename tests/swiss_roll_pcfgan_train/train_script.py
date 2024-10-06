@@ -34,7 +34,7 @@ sns.set()
 seed_everything(142, workers=True)
 
 # SIMUL_VARIABLES
-datamodel_name = "pcfgan_subparse_pure_pcfd_32_8_teachforce"
+datamodel_name = "pcfgan_truncparse_pure_pcfd_32_8_noteachforce"
 path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/swiss_roll_pcfgan_train")
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
 
@@ -73,7 +73,7 @@ period_in_logs_plotting: int = 40
 early_stop_val_loss = EarlyStopping(
     monitor="val_epdf",
     min_delta=1e-4,
-    patience=3000 // period_log,
+    patience=4000 // period_log,
     verbose=True,
     mode="min",
 )
@@ -99,12 +99,12 @@ logger_custom = TrainingHistoryLogger(
     period_logging_pt_lightning=period_log,
     period_in_logs_plotting=period_in_logs_plotting,
 )
-epochs = 10_001
+epochs = 20_001
 
 trainer = Trainer(
     default_root_dir=path2file_linker(["out"]),
     # gradient_clip_val=0.1,
-    gpus=[4],
+    gpus=[0],
     max_epochs=epochs,
     logger=[logger_custom],
     check_val_every_n_epoch=period_log,
