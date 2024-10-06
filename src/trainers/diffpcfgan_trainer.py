@@ -340,7 +340,9 @@ class DiffPCFGANTrainer(LightningModule):
             schedul_optim_gen = MultiStepLR(
                 optim_gen,
                 milestones=[
+                    # 20k -> 8k
                     2 * self.trainer.max_epochs // 5,
+                    # 20k -> 16k
                     4 * self.trainer.max_epochs // 5,
                 ],
                 gamma=0.4,
@@ -530,17 +532,7 @@ class DiffPCFGANTrainer(LightningModule):
         - After reaching half of the maximum number of epochs, the probability is set to 0.
 
         """
-        if self.current_epoch < self.trainer.max_epochs // 2:
-            return 0.5 * (
-                1
-                + torch.cos(
-                    torch.tensor(
-                        self.current_epoch * math.pi / (self.trainer.max_epochs // 2)
-                    )
-                )
-            )
-        else:
-            return torch.tensor([0.0])
+        return torch.tensor([0.0])
 
     def _training_step_gen(
         self, optim_gen, targets: torch.Tensor
