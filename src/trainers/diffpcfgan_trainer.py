@@ -120,8 +120,13 @@ class DiffPCFGANTrainer(LightningModule):
                     diffused_targets4pcfd,
                     denoised_diffused_targets4pcfd,
                 )
+        else:
+            diffused_targets4pcfd = diffused_targets
+            denoised_diffused_targets4pcfd = denoised_diffused_targets
 
-        diffused_targets4pcfd = DiffPCFGANTrainer._add_time_and_zero(diffused_targets)
+        diffused_targets4pcfd = DiffPCFGANTrainer._add_time_and_zero(
+            diffused_targets4pcfd
+        )
         denoised_diffused_targets4pcfd = DiffPCFGANTrainer._add_time_and_zero(
             denoised_diffused_targets4pcfd
         )
