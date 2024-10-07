@@ -84,7 +84,7 @@ def get_dir_name_from_params(
     return dir_name
 
 
-def run_training(config):
+def run_training(config, verbose):
     # Extract parameters from config
     lr_gen = config["lr_gen"]
     lr_disc = config["lr_disc"]
@@ -154,12 +154,12 @@ def run_training(config):
         num_sanity_val_steps=0,
         callbacks=[
             early_stop_val_loss,
-            ProgressbarWithoutValBatchUpdate(refresh_rate=10),
+            ProgressbarWithoutValBatchUpdate(refresh_rate=10 if verbose else 0),
             chkpt,
         ],
     )
-
-    logger.info("Creating the model.")
+    if verbose:
+        logger.info("Creating the model.")
     score_network = ToyNet(data_dim=data.inputs.shape[2])
     model = DiffPCFGANTrainer(
         data_train=data.train_in,
@@ -178,7 +178,8 @@ def run_training(config):
         sched_type=scheduler_type,
         use_fixed_measure_discriminator_pcfd=use_fixed_measure_discriminator_pcfd,
     )
-    logger.info("Model created.")
+    if verbose:
+        logger.info("Model created.")
 
     # section ######################################################################
     #  #############################################################################
@@ -226,7 +227,7 @@ if __name__ == "__main__":
         logger.info("================================================")
         logger.info(f"Running training with configuration: {config}")
         try:
-            run_training(config)
+            run_training(config, verbose=(len(configs) < 2))
         except Exception as e:
             logger.error(f"Training with config {config} \nfailed for the reason: {e}.")
             logger.error("Continuing with the next configuration.")
