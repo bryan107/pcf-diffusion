@@ -15,6 +15,7 @@ import time
 import numpy as np
 import seaborn as sns
 from matplotlib import pyplot as plt
+
 # Put below set_config_logging to get detail logs about early stopping.
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
@@ -39,15 +40,15 @@ sns.set()
 ########## All parameters to modify for training:
 #####################################################
 PARAMS_GRID = {
-    "lr_gen": [0.0008],
+    "lr_gen": [0.0018],
     "lr_disc": [0.001],
     "num_samples_pcf": [10],
     "hidden_dim_pcf": [8],
-    "num_diffusion_steps": [8],
-    "parser_type": ["Truncation"],
-    "parser_len": [8],
-    "scheduler_type": ["Step"],
-    "use_fixed_measure_discriminator_pcfd": [True],
+    "num_diffusion_steps": [32],
+    "parser_type": ["Truncation", "Subsampling"],
+    "parser_len": [16, 32],
+    "scheduler_type": ["Step", "Cosine"],
+    "use_fixed_measure_discriminator_pcfd": [True, False],
 }
 ###### Other constants:
 #####################################################
@@ -57,7 +58,7 @@ PATIENCE = 4000
 EPOCHS = 20_001
 GPU_ID = [0]
 SEED = 142
-DATA_SIZE = 400
+DATA_SIZE = 800
 
 
 #####################################################
