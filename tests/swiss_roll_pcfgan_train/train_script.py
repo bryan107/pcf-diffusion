@@ -15,7 +15,6 @@ import time
 import numpy as np
 import seaborn as sns
 from matplotlib import pyplot as plt
-
 # Put below set_config_logging to get detail logs about early stopping.
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
@@ -44,9 +43,9 @@ PARAMS_GRID = {
     "lr_disc": [0.001],
     "num_samples_pcf": [10],
     "hidden_dim_pcf": [8],
-    "num_diffusion_steps": [32],
+    "num_diffusion_steps": [64],
     "parser_type": ["Truncation", "Subsampling"],
-    "parser_len": [16, 32],
+    "parser_len": [16, 32, 64],
     "scheduler_type": ["Step", "Cosine"],
     "use_fixed_measure_discriminator_pcfd": [True, False],
 }
@@ -56,7 +55,7 @@ PERIOD_LOG: int = 5
 PERIOD_IN_LOG_PLOTTING: int = 40
 PATIENCE = 4000
 EPOCHS = 20_001
-GPU_ID = [0]
+GPU_ID = [4]
 SEED = 142
 DATA_SIZE = 800
 
