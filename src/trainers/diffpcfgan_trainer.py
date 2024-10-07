@@ -30,10 +30,6 @@ from src.differentialequations.diffusionprocess_continuous import (
 sns.set()
 
 PERIOD_PLOT_VAL = 100
-
-
-NUM_STEPS_DIFFUSION_2_CONSIDER = 8
-
 # Type annotation for a model that takes two tensors (x_t, time_step) and returns a tensor
 ScoreNetworkType = typing.Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 
@@ -142,7 +138,6 @@ class DiffPCFGANTrainer(LightningModule):
         data_train: torch.Tensor,
         data_val: torch.Tensor,
         score_network: ScoreNetworkType,
-        config: dict,
         learning_rate_gen: float,
         learning_rate_disc: float,
         num_D_steps_per_G_step: int,
@@ -150,6 +145,12 @@ class DiffPCFGANTrainer(LightningModule):
         hidden_dim_pcf: int,
         num_diffusion_steps: int,
         data_type: DataType,
+        output_dir_images: str,
+        # Choices are "Truncation" or "Subsampling"
+        parser_type: str,
+        parser_len: int,
+        # Choices are "Step" or "Cosine"
+        sched_type: str,
         use_fixed_measure_discriminator_pcfd: bool = False,
     ):
         # score_network is used to denoise the data and will be called as score_net(data, time).
@@ -162,12 +163,9 @@ class DiffPCFGANTrainer(LightningModule):
         self.automatic_optimization: bool = False
 
         # Training params
-        self.config = config
         self.lr_gen: float = learning_rate_gen
         self.lr_disc: float = learning_rate_disc
-
-        # self.choice_scheduler: str = "Cosine"
-        self.choice_scheduler: str = "Step"
+        self.sched_type: str = sched_type
 
         # Score Network Params
         self.score_network: ScoreNetworkType = score_network
@@ -178,13 +176,12 @@ class DiffPCFGANTrainer(LightningModule):
         self.discriminator = PCFEmpiricalMeasure(
             num_samples=self.num_samples_pcf,
             hidden_size=self.hidden_dim_pcf,
-            # TODO 13/08/2024 nie_k: instead of input_dim, set time_series_for_compar_dim
-            input_size=self.config.input_dim * self.config.n_lags + 1,
+            input_size=data_train.shape[1] * data_train.shape[2] + 1,
         )
         self.D_steps_per_G_step: int = num_D_steps_per_G_step
         self.use_fixed_measure_discriminator_pcfd = use_fixed_measure_discriminator_pcfd
 
-        self.output_dir_images: str = config.exp_dir
+        self.output_dir_images: str = output_dir_images
 
         # Diffusion:
         self.diffusion_process = ContinuousDiffusionProcess(
@@ -193,17 +190,31 @@ class DiffPCFGANTrainer(LightningModule):
             sde_type=SDEType.VP,
         )
         self.num_diffusion_steps: int = num_diffusion_steps
+        # TODO 07/10/2024 nie_k:  Make it more robust so we can use whatever len even larger than the sequences'.
+        self.parser_len: int = parser_len
+        self.parser_type = parser_type
 
-        self.sample_type = "Truncation"
-
-        if self.sample_type == "Truncation":
+        if self.parser_type == "Truncation":
             self.sampling_parser: typing.Optional[DiffusionSequenceParser] = (
-                TruncationParser(NUM_STEPS_DIFFUSION_2_CONSIDER)
+                TruncationParser(self.parser_len)
+            )
+        elif self.parser_type == "Subsampling":
+            self.sampling_parser: typing.Optional[DiffusionSequenceParser] = (
+                SubsamplingParser(self.parser_len)
             )
         else:
-            self.sampling_parser: typing.Optional[DiffusionSequenceParser] = (
-                SubsamplingParser(NUM_STEPS_DIFFUSION_2_CONSIDER)
-            )
+            raise ValueError(f"Unsupported choice for the parser: {self.parser_type}")
+
+        ### Loses
+        self.use_diffusion_score_matching_loss = False
+        self.L2_loss = torch.nn.MSELoss()
+        # Instantiate the HistogramLoss
+        self.train_histo_loss = HistogramLoss(
+            data_train, int(round(2.0 * math.pow(data_train.shape[0], 1.0 / 3.0), 0))
+        )
+        self.val_histo_loss = HistogramLoss(
+            data_val, int(round(2.0 * math.pow(data_val.shape[0], 1.0 / 3.0), 0))
+        )
 
         ####
         # WIP to explain:
@@ -220,16 +231,6 @@ class DiffPCFGANTrainer(LightningModule):
             self.num_axes_per_samples = 1
         else:
             self.num_axes_per_samples = data_train.shape[-1]
-        ### Loses
-        self.use_diffusion_score_matching_loss = False
-        self.L2_loss = torch.nn.MSELoss()
-        # Instantiate the HistogramLoss
-        self.train_histo_loss = HistogramLoss(
-            data_train, int(round(2.0 * math.pow(data_train.shape[0], 1.0 / 3.0), 0))
-        )
-        self.val_histo_loss = HistogramLoss(
-            data_val, int(round(2.0 * math.pow(data_val.shape[0], 1.0 / 3.0), 0))
-        )
 
         # Initialize the axes for plotting the trajectories (backward and forward, 2 axes).
         self.plot_diffusion_fig, self.plot_diffusion_axes = plt.subplots(
@@ -320,7 +321,7 @@ class DiffPCFGANTrainer(LightningModule):
             self.discriminator.parameters(), lr=self.lr_disc, weight_decay=0
         )
 
-        if self.choice_scheduler == "Step":
+        if self.sched_type == "Step":
             # A good rule of thumb is that if the max_epoch is 10k, patience is 3k, then you need to reduce the learning rate
             # at least every 3k epoch.
             schedul_optim_gen = MultiStepLR(
@@ -331,10 +332,12 @@ class DiffPCFGANTrainer(LightningModule):
                 ],
                 gamma=0.4,
             )
-        else:
+        elif self.sched_type == "Cosine":
             schedul_optim_gen = CosineAnnealingWarmRestarts(
                 optim_gen, T_0=1000, T_mult=2
             )
+        else:
+            raise ValueError(f"Unsupported choice for the scheduler: {self.sched_type}")
         return [optim_gen, optim_discr], [schedul_optim_gen]
 
     def training_step(self, batch, batch_nb):
@@ -496,7 +499,7 @@ class DiffPCFGANTrainer(LightningModule):
         # Set figure title and layout
         self.plot_diffusion_fig.suptitle(
             f"Comparison Diffusion Trajectories for n={diffused_targets.shape[0]}. \n"
-            f"The distributions are matched over the first {NUM_STEPS_DIFFUSION_2_CONSIDER} steps."
+            f"The distributions are matched over the first {self.parser_len} steps."
         )
         self.plot_diffusion_fig.tight_layout()
 
@@ -680,3 +683,13 @@ class DiffPCFGANTrainer(LightningModule):
             for ax in ax_list:
                 ax.clear()
         return
+
+    def register_gradient_clipping(self):
+        CLIP_VALUE: float = 0.1
+        for param in self.parameters():
+            if (
+                param.requires_grad
+            ):  # Only register the hook if the parameter requires gradients
+                param.register_hook(
+                    lambda grad: torch.clamp(grad, -CLIP_VALUE, CLIP_VALUE)
+                )

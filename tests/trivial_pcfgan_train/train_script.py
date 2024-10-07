@@ -39,42 +39,28 @@ datamodel_name = "pcfgan"
 path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/trivial_pcfgan_train")
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
 
+lr_gen = 0.0018
+lr_disc = 0.001
+num_samples_pcf = 10
+hidden_dim_pcf = 8
+num_diffusion_steps = 8
+parser_type = "Truncation"
+parser_len = 8
+scheduler_type = "Step"
+use_fixed_measure_discriminator_pcfd = True
+
 ########## Delete the previous run if it exists
 remove_files_from_dir(datamodel_path)
 ###############################################
 
 data = TrivialBM_Dataset(500, 5_000)
 
-
-class Config:
-    """Adapter to convert a dictionary to an object with properties/fields."""
-
-    def __init__(self, config_dict):
-        for key, value in config_dict.items():
-            setattr(self, key, value)
-
-
-config = {
-    "device": "cuda",
-    "lr_G": 0.0018,
-    "lr_D": 0.001,
-    "D_steps_per_G_step": 1,
-    "G_input_dim": 2,
-    "input_dim": data.inputs.shape[2],
-    "M_num_samples": 10,
-    "M_hidden_dim": 8,
-    # WIP NUM ELEMENT IN SEQ?
-    "n_lags": data.inputs.shape[1],
-    "exp_dir": datamodel_path,
-}
-config = Config(config)
-
-period_log: int = 5
-period_in_logs_plotting: int = 40
+PERIOD_LOG: int = 5
+PERIOD_IN_LOG_PLOTTING: int = 40
 early_stop_val_loss = EarlyStopping(
     monitor="val_epdf",
     min_delta=1e-4,
-    patience=4000 // period_log,
+    patience=4000 // PERIOD_LOG,
     verbose=True,
     mode="min",
 )
@@ -97,18 +83,17 @@ logger_custom = TrainingHistoryLogger(
         "val_epdf",
     ],
     plot_loss_history=True,
-    period_logging_pt_lightning=period_log,
-    period_in_logs_plotting=period_in_logs_plotting,
+    period_logging_pt_lightning=PERIOD_LOG,
+    period_in_logs_plotting=PERIOD_IN_LOG_PLOTTING,
 )
-epochs = 20_001
+EPOCHS = 20_001
 
 trainer = Trainer(
     default_root_dir=path2file_linker(["out"]),
-    # gradient_clip_val=0.1,
     gpus=[0],
-    max_epochs=epochs,
+    max_epochs=EPOCHS,
     logger=[logger_custom],
-    check_val_every_n_epoch=period_log,
+    check_val_every_n_epoch=PERIOD_LOG,
     num_sanity_val_steps=0,
     callbacks=[
         early_stop_val_loss,
@@ -118,20 +103,23 @@ trainer = Trainer(
 )
 
 logger.info("Creating the model.")
-score_network = ToyNet(data_dim=config.input_dim)
+score_network = ToyNet(data_dim=data.inputs.shape[1])
 model = DiffPCFGANTrainer(
     data_train=data.train_in,
     data_val=data.val_in,
     score_network=score_network,
-    config=config,
-    learning_rate_gen=config.lr_G,
-    learning_rate_disc=config.lr_D,
-    num_D_steps_per_G_step=config.D_steps_per_G_step,
-    num_samples_pcf=config.M_num_samples,
-    hidden_dim_pcf=config.M_hidden_dim,
-    num_diffusion_steps=8,
-    use_fixed_measure_discriminator_pcfd=True,
+    learning_rate_gen=lr_gen,
+    learning_rate_disc=lr_disc,
+    num_D_steps_per_G_step=1,
+    num_samples_pcf=num_samples_pcf,
+    hidden_dim_pcf=hidden_dim_pcf,
+    num_diffusion_steps=num_diffusion_steps,
     data_type=DataType.ONE_D,
+    output_dir_images=datamodel_path,
+    parser_type=parser_type,
+    parser_len=parser_len,
+    sched_type=scheduler_type,
+    use_fixed_measure_discriminator_pcfd=use_fixed_measure_discriminator_pcfd,
 )
 logger.info("Model created.")
 
@@ -142,7 +130,7 @@ logger.info("Model created.")
 
 ### Catch errors etc:
 def terminating_operations():
-    savefig(logger_custom.fig, config.exp_dir + f"loss_history.png")
+    savefig(logger_custom.fig, datamodel_path + f"loss_history.png")
     return
 
 
