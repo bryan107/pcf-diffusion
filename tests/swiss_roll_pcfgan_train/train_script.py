@@ -173,6 +173,7 @@ try:
     )
 except Exception as e:
     logger.error(f"Training failed: {e}")
+    raise e
 finally:
     terminating_operations()
 plt.show()

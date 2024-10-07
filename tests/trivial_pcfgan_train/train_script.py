@@ -8,6 +8,8 @@ It erases the folder before running the script.
 """
 
 import logging
+import signal
+import sys
 import time
 
 import numpy as np
@@ -15,11 +17,11 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 
 from src.logger.init_logger import set_config_logging
-from src.trainers.visual_data import DataType
 
 set_config_logging()
 logger = logging.getLogger(__name__)
 
+from src.trainers.visual_data import DataType
 from pytorch_lightning import seed_everything, Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from src.networks.models.toynet import ToyNet
@@ -27,7 +29,7 @@ from config import ROOT_DIR
 from src.trainers.diffpcfgan_trainer import DiffPCFGANTrainer
 from src.utils.progressbarwithoutvalbatchupdate import ProgressbarWithoutValBatchUpdate
 from src.utils.traininghistorylogger import TrainingHistoryLogger
-from src.utils.utils_os import factory_fct_linked_path, savefig, remove_files_from_dir
+from src.utils.utils_os import factory_fct_linked_path, remove_files_from_dir, savefig
 from tests.trivial_pcfgan_train.trivialbm_dataset import TrivialBM_Dataset
 
 sns.set()
@@ -36,7 +38,6 @@ seed_everything(142, workers=True)
 datamodel_name = "pcfgan"
 path2file_linker = factory_fct_linked_path(ROOT_DIR, "tests/trivial_pcfgan_train")
 datamodel_path = path2file_linker(["out", datamodel_name, ""])
-
 
 ########## Delete the previous run if it exists
 remove_files_from_dir(datamodel_path)
@@ -55,13 +56,13 @@ class Config:
 
 config = {
     "device": "cuda",
-    "lr_G": 0.001,
+    "lr_G": 0.0018,
     "lr_D": 0.001,
     "D_steps_per_G_step": 1,
     "G_input_dim": 2,
     "input_dim": data.inputs.shape[2],
-    "M_num_samples": 8,
-    "M_hidden_dim": 12,
+    "M_num_samples": 10,
+    "M_hidden_dim": 8,
     # WIP NUM ELEMENT IN SEQ?
     "n_lags": data.inputs.shape[1],
     "exp_dir": datamodel_path,
@@ -71,14 +72,14 @@ config = Config(config)
 period_log: int = 5
 period_in_logs_plotting: int = 40
 early_stop_val_loss = EarlyStopping(
-    monitor="train_pcfd",
+    monitor="val_epdf",
     min_delta=1e-4,
-    patience=2000 // period_log,
+    patience=4000 // period_log,
     verbose=True,
     mode="min",
 )
 chkpt = ModelCheckpoint(
-    monitor="train_pcfd",
+    monitor="val_epdf",
     mode="min",
     verbose=True,
     save_top_k=1,
@@ -99,7 +100,7 @@ logger_custom = TrainingHistoryLogger(
     period_logging_pt_lightning=period_log,
     period_in_logs_plotting=period_in_logs_plotting,
 )
-epochs = 5001
+epochs = 20_001
 
 trainer = Trainer(
     default_root_dir=path2file_linker(["out"]),
@@ -138,16 +139,41 @@ logger.info("Model created.")
 #  #############################################################################
 #  Training
 
-start_time = time.perf_counter()
-trainer.fit(model, datamodule=data)
-train_time = np.round(time.perf_counter() - start_time, 2)
-print(
-    "Total time training: ",
-    train_time,
-    " seconds. In average, it took: ",
-    np.round(train_time / trainer.current_epoch, 4),
-    " seconds per epochs.",
-)
 
-savefig(logger_custom.fig, config.exp_dir + f"loss_history.png")
+### Catch errors etc:
+def terminating_operations():
+    savefig(logger_custom.fig, config.exp_dir + f"loss_history.png")
+    return
+
+
+# Signal handler to save the results if the program is interrupted.
+def termination_handler(signum, frame):
+    logger.critical(f"Signal {signum} received, saving data and exiting...")
+    try:
+        terminating_operations()
+    except Exception as e:
+        logger.error(f"Failed to save results: {e}")
+    sys.exit(0)
+
+
+# When the script is stopped softly (not using -9), we will wrap up the work.
+signal.signal(signal.SIGINT, termination_handler)
+signal.signal(signal.SIGTERM, termination_handler)
+
+try:
+    start_time = time.perf_counter()
+    trainer.fit(model, datamodule=data)
+    train_time = np.round(time.perf_counter() - start_time, 2)
+    print(
+        "Total time training: ",
+        train_time,
+        " seconds. In average, it took: ",
+        np.round(train_time / trainer.current_epoch, 4),
+        " seconds per epochs.",
+    )
+except Exception as e:
+    logger.error(f"Training failed: {e}")
+    raise e
+finally:
+    terminating_operations()
 plt.show()

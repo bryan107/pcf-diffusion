@@ -10,6 +10,10 @@ logger = logging.getLogger(__name__)
 
 ScoreNetworkType = typing.Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 
+# 4.0 is far for a Gaussian, so it is safe to clam values there.
+# It will also help the model to be more stable.
+MAX_VALUE_DIFFUSION = 5.0
+
 
 class SDEType(Enum):
     """Enum representing the types of Stochastic Differential Equations (SDEs)."""
@@ -185,7 +189,7 @@ class ContinuousDiffusionProcess(nn.Module):
 
         if clip_denoised and x_t.ndim > 2:
             # Change depending on the dataset.
-            x_prev = x_prev.clamp(-10.0, 10.0)
+            x_prev = x_prev.clamp(-MAX_VALUE_DIFFUSION, MAX_VALUE_DIFFUSION)
 
         return x_prev
 

@@ -33,8 +33,6 @@ PERIOD_PLOT_VAL = 100
 
 
 NUM_STEPS_DIFFUSION_2_CONSIDER = 8
-# Adding 1 for the zero at the beginning.
-NUM_STEPS_DIFFUSION_2_CONSIDER += 1
 
 # Type annotation for a model that takes two tensors (x_t, time_step) and returns a tensor
 ScoreNetworkType = typing.Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
@@ -47,44 +45,39 @@ class DiffPCFGANTrainer(LightningModule):
         return torch.randn(*shape, device=device)
 
     @staticmethod
-    def _flat_add_time_transpose_and_add_zero(data: torch.Tensor) -> torch.Tensor:
-        # Receive data of shape (S, N, L, D).
-        # Transforms it into (N, S, L * D)
-
-        # Merge the sequence dimension (dim 2) and the feature dimension (dim 3) into a single dimension.
-        # Flattening is required before adding time otherwise we would add too many dimensions with the time.
-        data = data.flatten(2, 3)
+    def _add_time_and_zero(data: torch.Tensor) -> torch.Tensor:
+        # Receive data of shape (N, S, L * D).
+        # Transforms it into (N, S + 1, L * D + 1)
 
         # Add a zero at the beginning of the sequence. By adding it before time simplifies time augmentation.
-        # WIP MOVE THIS
-        zeros = torch.zeros(1, data.shape[1], data.shape[2], device=data.device)
-        data = torch.cat((zeros, data), dim=0)
+        zeros = torch.zeros(data.shape[0], 1, data.shape[2], device=data.device)
+        data = torch.cat((zeros, data), dim=1)
 
         # Add the times to the data by creating a linspace between 0,1 and which is repeated for all (N,L).
         diffusion_times = (
             torch.linspace(
                 0.0,
                 1.0,
-                steps=data.shape[0],
+                steps=data.shape[1],
                 device=data.device,
             )
-            .view(-1, 1, 1)
+            .view(1, -1, 1)
             .expand(
                 data.shape[0],
                 data.shape[1],
                 1,
             )
         )
-        data = torch.cat((data, diffusion_times), dim=-1)
-        # Permute the batch axis and the diffusion axis.
-        data = data.transpose(0, 1)
-        # adding contiguous slows down the code tremendously, so we keep it like that.
+        data = torch.cat((data, diffusion_times), dim=2)
         return data
 
     @staticmethod
     def flattenNtranspose(data: torch.Tensor) -> torch.Tensor:
         # Receive data of shape (S, N, L, D).
         # Return data of shape (N, S, L * D)
+
+        # Merge the sequence dimension (dim 2) and the feature dimension (dim 3) into a single dimension.
+        # Flattening is required before adding time otherwise we would add too many dimensions with the time.
         return data.flatten(2, 3).transpose(0, 1)
 
     @staticmethod
@@ -109,26 +102,21 @@ class DiffPCFGANTrainer(LightningModule):
         diffused_targets = diffused_targets[:-1]
         denoised_diffused_targets = denoised_diffused_targets[:-1]
 
-        diffused_targets4pcfd = DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
-            diffused_targets
-        )
-        denoised_diffused_targets4pcfd = (
-            DiffPCFGANTrainer._flat_add_time_transpose_and_add_zero(
-                denoised_diffused_targets
-            )
+        # Sequences are of shape (S, N, L, D). We transform into the correct format (N, S, L * D).
+        diffused_targets = DiffPCFGANTrainer.flattenNtranspose(diffused_targets)
+        denoised_diffused_targets = DiffPCFGANTrainer.flattenNtranspose(
+            denoised_diffused_targets
         )
         if step_training_for_logs is not None:
             logger.debug(
                 f"\nDiffused targets for {step_training_for_logs}: \n%s\nDenoised samples for {step_training_for_logs}: %s\n",
-                diffused_targets4pcfd,
-                denoised_diffused_targets4pcfd,
+                diffused_targets,
+                denoised_diffused_targets,
             )
 
         if sampling_parser is not None:
-            diffused_targets4pcfd = sampling_parser(diffused_targets4pcfd)
-            denoised_diffused_targets4pcfd = sampling_parser(
-                denoised_diffused_targets4pcfd
-            )
+            diffused_targets4pcfd = sampling_parser(diffused_targets)
+            denoised_diffused_targets4pcfd = sampling_parser(denoised_diffused_targets)
 
             if step_training_for_logs is not None:
                 logger.debug(
@@ -137,10 +125,9 @@ class DiffPCFGANTrainer(LightningModule):
                     denoised_diffused_targets4pcfd,
                 )
 
-        # Sequences are of shape (S, N, L, D). We transform into the correct format (N, S, L * D).
-        diffused_targets = DiffPCFGANTrainer.flattenNtranspose(diffused_targets)
-        denoised_diffused_targets = DiffPCFGANTrainer.flattenNtranspose(
-            denoised_diffused_targets
+        diffused_targets4pcfd = DiffPCFGANTrainer._add_time_and_zero(diffused_targets)
+        denoised_diffused_targets4pcfd = DiffPCFGANTrainer._add_time_and_zero(
+            denoised_diffused_targets4pcfd
         )
 
         return (
@@ -234,7 +221,7 @@ class DiffPCFGANTrainer(LightningModule):
         else:
             self.num_axes_per_samples = data_train.shape[-1]
         ### Loses
-        self.use_diffusion_score_matching_loss = True
+        self.use_diffusion_score_matching_loss = False
         self.L2_loss = torch.nn.MSELoss()
         # Instantiate the HistogramLoss
         self.train_histo_loss = HistogramLoss(
