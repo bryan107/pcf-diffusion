@@ -39,13 +39,13 @@ sns.set()
 ########## All parameters to modify for training:
 #####################################################
 PARAMS_GRID = {
-    "lr_gen": [0.0018],
+    "lr_gen": [0.000_8],
     "lr_disc": [0.001],
     "num_samples_pcf": [10],
     "hidden_dim_pcf": [8],
-    "num_diffusion_steps": [64],
+    "num_diffusion_steps": [32],
     "parser_type": ["Truncation", "Subsampling"],
-    "parser_len": [16, 32, 64],
+    "parser_len": [16, 32],
     "scheduler_type": ["Step", "Cosine"],
     "use_fixed_measure_discriminator_pcfd": [True, False],
 }
