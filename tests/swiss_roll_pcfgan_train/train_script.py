@@ -39,7 +39,7 @@ sns.set()
 ########## All parameters to modify for training:
 #####################################################
 PARAMS_GRID = {
-    "lr_gen": [0.000_8],
+    "lr_gen": [0.000_1],
     "lr_disc": [0.001],
     "num_samples_pcf": [10],
     "hidden_dim_pcf": [8],
