@@ -29,7 +29,7 @@ from src.differentialequations.diffusionprocess_continuous import (
 # For the method: plot_for_back_ward_trajectories
 sns.set()
 
-PERIOD_PLOT_VAL = 100
+PERIOD_PLOT_VAL = 200
 # Type annotation for a model that takes two tensors (x_t, time_step) and returns a tensor
 ScoreNetworkType = typing.Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 
@@ -359,9 +359,10 @@ class DiffPCFGANTrainer(LightningModule):
         losses_as_dict = self._training_step_gen(optim_gen, targets)
 
         if not self.use_fixed_measure_discriminator_pcfd:
+            self.discriminator.eval()
             for i in range(self.D_steps_per_G_step):
                 _ = self._training_step_disc(optim_discr, targets)
-
+            self.discriminator.train()
         # Discriminator and Generator share the same loss so no need to report both.
         self._log_all_metrics(
             {
