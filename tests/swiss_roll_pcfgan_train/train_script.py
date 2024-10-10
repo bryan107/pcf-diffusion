@@ -43,7 +43,7 @@ PARAMS_GRID = {
     "lr_disc": [0.000_1],
     "num_samples_pcf": [12],
     "hidden_dim_pcf": [8],
-    "num_diffusion_steps": [32, 128],
+    "num_diffusion_steps": [64, 128],
     "parser_type": ["Truncation", "Subsampling"],
     "parser_len": [16, 32],
     "scheduler_type": ["Step", "Cosine"],
@@ -73,8 +73,8 @@ def get_dir_name_from_params(
 ):
     dir_name = (
         f"pcfgan"
-        f"_diff{num_diffusion_steps}"
         f"_pars{parser_type[:4].lower()}"
+        f"_diff{num_diffusion_steps}"
         f"_len{parser_len}"
         f"_sched{scheduler_type[:4].lower()}"
         f"_lrgen{format(lr_gen, '.5g').replace('.', ',')}"  # Replace dot with comma in the learning rate
