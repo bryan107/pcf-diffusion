@@ -39,9 +39,9 @@ sns.set()
 ########## All parameters to modify for training:
 #####################################################
 PARAMS_GRID = {
-    "lr_gen": [0.000_1],
-    "lr_disc": [0.001],
-    "num_samples_pcf": [10],
+    "lr_gen": [0.000_3],
+    "lr_disc": [0.000_1],
+    "num_samples_pcf": [12],
     "hidden_dim_pcf": [8],
     "num_diffusion_steps": [32],
     "parser_type": ["Truncation", "Subsampling"],
@@ -77,7 +77,7 @@ def get_dir_name_from_params(
         f"_pars{parser_type[:4].lower()}"
         f"_len{parser_len}"
         f"_sched{scheduler_type[:4].lower()}"
-        f"_lrgen{lr_gen:.5g}"
+        f"_lrgen{format(lr_gen, '.5g').replace('.', ',')}"  # Replace dot with comma in the learning rate
         f"_fixed{str(use_fixed_measure_discriminator_pcfd).lower()}"
     )
     return dir_name

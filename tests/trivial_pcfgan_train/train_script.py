@@ -78,7 +78,7 @@ def get_dir_name_from_params(
         f"_pars{parser_type[:4].lower()}"
         f"_len{parser_len}"
         f"_sched{scheduler_type[:4].lower()}"
-        f"_lrgen{lr_gen:.5g}"
+        f"_lrgen{format(lr_gen, '.5g').replace('.', ',')}"  # Replace dot with comma in the learning rate
         f"_fixed{str(use_fixed_measure_discriminator_pcfd).lower()}"
     )
     return dir_name
