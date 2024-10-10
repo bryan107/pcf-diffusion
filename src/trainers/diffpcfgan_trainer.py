@@ -698,7 +698,8 @@ class DiffPCFGANTrainer(LightningModule):
 
     def register_gradient_clipping(self):
         CLIP_VALUE: float = 0.1
-        for param in self.parameters():
+        # Do not register the hook on PCFD.
+        for param in self.score_network.parameters():
             if (
                 param.requires_grad
             ):  # Only register the hook if the parameter requires gradients
