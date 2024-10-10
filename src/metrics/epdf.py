@@ -1,3 +1,4 @@
+import logging
 import math
 import typing
 
@@ -5,10 +6,12 @@ import matplotlib.pyplot as plt
 import torch
 from torch import nn
 
+logger = logging.getLogger(__name__)
+
 
 def histogram_torch(x, bins, density=True):
     """
-    Computes the histogram of a tensor using provided bins.
+    Computes the histogram of a tensor using provided bins, ignoring NaNs.
 
     Args:
     - x (torch.Tensor): Input tensor.
@@ -19,6 +22,15 @@ def histogram_torch(x, bins, density=True):
     - count (torch.Tensor): Counts of the histogram bins on the device of x.
     - bins (torch.Tensor): Bin edges on the device of x.
     """
+    # Remove NaNs from the input tensor
+    x = x[~torch.isnan(x)]
+    # Return zero count if no valid entries remain
+    if x.numel() == 0:
+        logger.warning(
+            "There are only NaNs in the input tensor for histogram computation."
+        )
+        return torch.zeros(len(bins) - 1, device=x.device), bins
+
     delta = bins[1] - bins[0]
     n_bins = len(bins) - 1
 
@@ -32,6 +44,35 @@ def histogram_torch(x, bins, density=True):
 
 
 class HistogramLoss(nn.Module):
+    r"""
+    HistogramLoss computes the difference between real and fake data distributions
+    based on histograms.
+
+    Formulas used for the loss computation:
+
+    1. **Bin Centers**:
+
+    .. math::
+        \text{center\_bin\_loc} = \frac{bins[i+1] + bins[i]}{2}
+
+    where `bins[i]` are the edges of the bins.
+
+    2. **Density of Fake Data**:
+
+    .. math::
+        \text{density} = \frac{1}{|\Delta|} \cdot \frac{1}{N} \sum_{j=1}^N I\left(\frac{|\text{fake\_sample} - \text{center\_bin\_loc}|}{|\Delta|/2} \leq 1 \right)
+
+    where `\Delta` is the bin width, and the indicator function ensures that the
+    fake sample is within the bin centered at `center_bin_loc`.
+
+    3. **Loss**:
+
+    .. math::
+        \text{loss} = \frac{1}{|\Delta|} \cdot | \text{density}_{real} - \text{density}_{fake} |
+
+    This computes the absolute difference between the real and fake densities,
+    normalized by the bin width `\Delta`.
+    """
 
     @staticmethod
     def num_bins_freedman_diaconis_rule(num_samples):
@@ -58,19 +99,79 @@ class HistogramLoss(nn.Module):
         """
         return int(round(2.0 * math.pow(num_samples, 1.0 / 3.0), 0))
 
-    # nn.Module because it has a parameter to register.
+    @staticmethod
+    def precompute_histograms(x: torch.Tensor, n_bins: int):
+        densities: typing.List = []
+        center_bin_locs: typing.List = []
+        bin_widths: typing.List = []
+        bin_edges: typing.List = []
+
+        for time_step in range(x.shape[1]):
+            per_time_densities = []
+            per_time_center_bin_locs = []
+            per_time_bin_widths = []
+            feature_bins = []
+            for feature_idx in range(x.shape[2]):
+                x_ti = x[:, time_step, feature_idx].reshape(-1)
+                x_ti = x_ti[~torch.isnan(x_ti)]  # Remove NaNs
+
+                if x_ti.numel() == 0:
+                    # Handle the case where all values are NaNs by appending a tensor of zeros
+                    per_time_densities.append(torch.zeros(n_bins, device=x.device))
+                    per_time_center_bin_locs.append(
+                        torch.zeros(n_bins, device=x.device)
+                    )
+                    per_time_bin_widths.append(
+                        torch.tensor(1.0, device=x.device)
+                    )  # Default bin width
+                    feature_bins.append(torch.zeros(n_bins + 1, device=x.device))
+                    continue
+
+                min_val, max_val = x_ti.min().item(), x_ti.max().item()
+                # We catch here the case when the values are all the same for a time and feature.
+                if abs(max_val - min_val) < 1e-10:
+                    max_val = max_val + 1e-5
+                    min_val = min_val - 1e-5
+
+                bins = torch.linspace(min_val, max_val, n_bins + 1, device=x.device)
+                density, bins = histogram_torch(x_ti, bins, density=True)
+                per_time_densities.append(density)
+                bin_width = bins[1] - bins[0]
+                center_bin_loc = 0.5 * (bins[1:] + bins[:-1])
+                per_time_center_bin_locs.append(center_bin_loc)
+                per_time_bin_widths.append(bin_width)
+                feature_bins.append(bins)
+
+            densities.append(per_time_densities)
+            center_bin_locs.append(per_time_center_bin_locs)
+            bin_widths.append(per_time_bin_widths)
+            bin_edges.append(feature_bins)
+
+        # For all time stamps, they should be the same dimensions, hence stackable.
+        # Can't do ParamList of ParamList. First nest per feature, second per time and inside per bin.
+        densities: typing.List = [torch.stack(d) for d in densities]
+        center_bin_locs: typing.List = [torch.stack(l) for l in center_bin_locs]
+        bin_widths: typing.List = [torch.stack(d) for d in bin_widths]
+        bin_edges: typing.List = [torch.stack(b) for b in bin_edges]
+
+        return densities, center_bin_locs, bin_widths, bin_edges
+
     def __init__(self, x_real: torch.Tensor, n_bins: int):
         """
         Initializes the HistogramLoss with the real data distribution.
 
         Args:
         - x_real (torch.Tensor): Real data tensor of shape (N, L, D).
-        - n_bins (int): Number of bins for the histograms. Recommended to use `num_bins_freedman_diaconis_rule`.
+        - n_bins (int): Number of bins for the histograms.
         """
         super().__init__()
         self.n_bins = n_bins
-
         self.num_samples, self.num_time_steps, self.num_features = x_real.shape
+
+        # Log the initialization details
+        logger.info(
+            f"Initializing HistogramLoss with {self.num_samples} samples, {self.num_time_steps} time steps, and {self.num_features} features."
+        )
 
         self.densities, self.center_bin_locs, self.bin_widths, self.bin_edges = (
             self.precompute_histograms(x_real, n_bins)
@@ -103,51 +204,10 @@ class HistogramLoss(nn.Module):
             [nn.Parameter(bin, requires_grad=False) for bin in self.bin_edges]
         )
 
-    @staticmethod
-    def precompute_histograms(x: torch.Tensor, n_bins: int):
-        densities: typing.List = []
-        center_bin_locs: typing.List = []
-        bin_widths: typing.List = []
-        bin_edges: typing.List = []
-        for time_step in range(x.shape[1]):
-            per_time_densities = []
-            per_time_center_bin_locs = []
-            per_time_bin_widths = []
-            feature_bins = []
-            for feature_idx in range(x.shape[2]):
-                x_ti = x[:, time_step, feature_idx].reshape(-1)
-                min_val, max_val = x_ti.min().item(), x_ti.max().item()
-                # We catch here the case when the values are all the same for a time and feature.
-                if abs(max_val - min_val) < 1e-10:
-                    max_val = max_val + 1e-5
-                    min_val = min_val - 1e-5
-
-                bins = torch.linspace(min_val, max_val, n_bins + 1, device=x.device)
-                density, bins = histogram_torch(x_ti, bins, density=True)
-                per_time_densities.append(density)
-                bin_width = bins[1] - bins[0]
-                center_bin_loc = 0.5 * (bins[1:] + bins[:-1])
-                per_time_center_bin_locs.append(center_bin_loc)
-                per_time_bin_widths.append(bin_width)
-                feature_bins.append(bins)
-            densities.append(per_time_densities)
-            center_bin_locs.append(per_time_center_bin_locs)
-            bin_widths.append(per_time_bin_widths)
-            bin_edges.append(feature_bins)
-
-        # For all time stamps, they should be the same dimensions, hence stackable.
-        # Can't do ParamList of ParamList. First nest per feature, second per time and inside per bin.
-        densities: typing.List = [torch.stack(d) for d in densities]
-        center_bin_locs: typing.List = [torch.stack(l) for l in center_bin_locs]
-        bin_widths: typing.List = [torch.stack(d) for d in bin_widths]
-        bin_edges: typing.List = [torch.stack(b) for b in bin_edges]
-
-        return densities, center_bin_locs, bin_widths, bin_edges
-
     def compute(self, x_fake):
         """
         Computes the histogram loss between real and fake data distributions.
-        We noticed issues in the case of the comparison of densities ala Dirac measure. Use with cautious in that case.
+        We noticed issues in the case of the comparison of densities ala Dirac measure. Use with caution in that case.
 
         Args:
         - x_fake (torch.Tensor): Fake data tensor of shape (N, L, D).
@@ -163,14 +223,33 @@ class HistogramLoss(nn.Module):
         ), f"Expected {self.num_time_steps} time steps in x_fake, but got {x_fake.shape[1]}."
 
         all_losses: typing.List = []
+        # To store time steps with NaNs
+        nan_features_per_time_step: typing.List[typing.Tuple[int, typing.List[int]]] = (
+            []
+        )
 
         for time_step in range(x_fake.shape[1]):
             per_time_losses: typing.List = []
+            nan_features: typing.List[int] = (
+                []
+            )  # Collect indices with NaNs for this time step
             for feature_idx in range(x_fake.shape[2]):
                 # Localisation of the bins
                 loc: torch.Tensor = self.center_bin_locs[time_step][feature_idx]
                 # Fake samples at time step t for feature i
                 x_ti: torch.Tensor = x_fake[:, time_step, feature_idx].reshape(-1, 1)
+                nan_indices = torch.isnan(x_fake[:, time_step, feature_idx])
+
+                if torch.all(nan_indices):
+                    nan_features.append(
+                        feature_idx
+                    )  # Record feature index with all NaNs
+                    continue  # Skip if all NaNs
+
+                x_ti = x_ti[~torch.isnan(x_ti)].reshape(-1, 1)  # Remove NaNs
+                if x_ti.numel() == 0:
+                    continue  # Skip if no valid entries after removing NaNs
+
                 # Distance bin center to the sample.
                 dist: torch.Tensor = torch.abs(x_ti - loc)
                 # Counts how many element of the fake data falls within the corresponding bins of the real data.
@@ -186,18 +265,49 @@ class HistogramLoss(nn.Module):
                     density - self.densities[time_step][feature_idx]
                 )
                 per_time_losses.append(torch.mean(abs_metric))
+
+            if not per_time_losses:
+                nan_features_per_time_step.append(
+                    (time_step, nan_features)
+                )  # Store if all features are NaNs for this step
+                continue  # Skip if no valid data for this time step
+
             all_losses.append(torch.stack(per_time_losses))
+
+        # Log NaNs at the end of processing
+        if nan_features_per_time_step:
+            nan_warnings = [
+                f"Time step {time_step} has only NaNs for features {features}"
+                for time_step, features in nan_features_per_time_step
+            ]
+            nan_warnings = nan_warnings[:10] + (
+                ["..."] if len(nan_warnings) > 5 else []
+            )
+            logger.warning(", ".join(nan_warnings))
+
+        # Raise error if no valid data was found for any time step and feature
+        if not all_losses:
+            logger.error(
+                "All time steps and features contain NaNs or empty data, yielding no valid losses."
+            )
+
         all_losses: torch.Tensor = torch.stack(all_losses)
         return all_losses
 
     def forward(self, x_fake, ignore_features: list = None):
-        if ignore_features is None:
-            return self.compute(x_fake).mean()
+        try:
+            if ignore_features is None or (
+                hasattr(ignore_features, "__len__") and len(ignore_features) == 0
+            ):
+                return self.compute(x_fake).mean()
 
-        ignore_indices = torch.tensor(ignore_features, dtype=torch.long)
-        mask = torch.ones(self.num_features, dtype=torch.bool)
-        mask[ignore_indices] = False
-        return self.compute(x_fake)[:, mask].mean()
+            ignore_indices = torch.tensor(ignore_features, dtype=torch.long)
+            mask = torch.ones(x_fake.shape[2], dtype=torch.bool)
+            mask[ignore_indices] = False
+            return self.compute(x_fake)[:, mask].mean()
+        except Exception as e:
+            logger.error(f"Error in the forward pass of the HistogramLoss: {e}")
+            return torch.tensor(0.0, device=x_fake.device)
 
     def plot_histograms(self, x_fake):
         """
@@ -246,30 +356,93 @@ class HistogramLoss(nn.Module):
                 plt.pause(0.01)
 
 
-# Example usage
 if __name__ == "__main__":
-    N, L, D = 50_000, 5, 2  # Example dimensions
+    N, L, D = 50_000, 3, 2  # Example dimensions
     n_bins = 20
 
-    import time
-
-    start = time.time()
+    # --------------------- EXAMPLE 1: Everything works (no NaNs) ---------------------
+    print("Example 1: Basic case with no NaNs")
 
     # Generate random real and fake data
-    x_real = torch.randn(N, L, D)  # .to('cuda')
-    x_fake = torch.randn(N, L, D) * 0.6 + 0.04  # .to('cuda')
+    x_real = torch.randn(N, L, D)
+    x_fake = torch.randn(N, L, D) * 0.6 + 0.04
 
     # Instantiate the HistogramLoss
     histo_loss = HistogramLoss(x_real, n_bins)
 
     # Compute the loss
     loss = histo_loss(x_fake)
-    print("Histogram Loss:", loss)
-
-    end = time.time()
-    print("Time taken:", end - start)
+    print("Histogram Loss (Example 1):", loss)
 
     # Plot histograms for debugging
     histo_loss.plot_histograms(x_fake)
+    plt.pause(0.01)
 
+    # --------------------- EXAMPLE 2: Running on CUDA ---------------------
+    if torch.cuda.is_available():
+        print("\nExample 2: Running on CUDA")
+
+        # Generate random real and fake data on CUDA
+        x_real_cuda = torch.randn(N, L, D).cuda()
+        x_fake_cuda = (torch.randn(N, L, D) * 0.6 + 0.04).cuda()
+
+        # Instantiate the HistogramLoss on CUDA
+        histo_loss_cuda = HistogramLoss(x_real_cuda, n_bins).cuda()
+
+        # Compute the loss on CUDA
+        loss_cuda = histo_loss_cuda(x_fake_cuda)
+        print("Histogram Loss (Example 2 - CUDA):", loss_cuda)
+
+        # Plot histograms for debugging
+        histo_loss_cuda.to("cpu")
+        histo_loss_cuda.plot_histograms(
+            x_fake_cuda.to("cpu")
+        )  # Move to CPU for plotting
+        plt.pause(0.01)
+    else:
+        print("CUDA is not available. Skipping Example 2.")
+
+    # --------------------- EXAMPLE 3: Handling NaNs ---------------------
+    print("\nExample 3: Handling NaNs in the dataset")
+
+    # Generate random real and fake data with some NaNs
+    x_real_nans = torch.randn(N, L, D)
+    x_fake_nans = torch.randn(N, L, D) * 0.6 + 0.04
+
+    # Introduce NaNs in real and fake data
+    x_real_nans[0:1000, 1, 0] = float("nan")  # Feature 1 at time step 2 has some NaNs
+    x_fake_nans[100:500, 0, 0] = float("nan")  # Feature 1 at time step 1
+
+    # Instantiate the HistogramLoss
+    histo_loss_nans = HistogramLoss(x_real_nans, n_bins)
+
+    # Compute the loss
+    loss_nans = histo_loss_nans(x_fake_nans)
+    print("Histogram Loss (Example 3 - NaNs):", loss_nans)
+
+    # Plot histograms for debugging
+    histo_loss_nans.plot_histograms(x_fake_nans)
+    plt.pause(0.01)
+
+    # --------------------- EXAMPLE 4: Handling NaNs ---------------------
+    print("\nExample 4: Handling an entire row of NaNs in the dataset")
+
+    # Generate random real and fake data with some NaNs
+    x_real_nans = torch.randn(N, L, D)
+    x_fake_nans = torch.randn(N, L, D) * 0.6 + 0.04
+
+    # Introduce NaNs in real and fake data
+    x_real_nans[0:1000, 1, 0] = float("nan")  # Feature 1 at time step 2 has some NaNs
+    x_real_nans[:, 2, 1] = float("nan")  # Feature 2 at time step 3 is entirely NaN
+    x_fake_nans[100:500, 0, 0] = float("nan")  # Feature 1 at time step 1
+
+    # Instantiate the HistogramLoss
+    histo_loss_nans = HistogramLoss(x_real_nans, n_bins)
+
+    # Compute the loss
+    loss_nans = histo_loss_nans(x_fake_nans)
+    print("Histogram Loss (Example 4 - NaNs):", loss_nans)
+
+    # Plot histograms for debugging
+    histo_loss_nans.plot_histograms(x_fake_nans)
     plt.show()

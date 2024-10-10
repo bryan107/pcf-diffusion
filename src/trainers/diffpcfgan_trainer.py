@@ -160,6 +160,9 @@ class DiffPCFGANTrainer(LightningModule):
     ):
         # score_network is used to denoise the data and will be called as score_net(data, time).
 
+        # TODO 10/10/2024 nie_k:
+        #  num_D_steps_per_G_step should also allow for a value smaller than 1?
+        #  In order to improve training. Not only when fixed so we can see well.
         super().__init__()
 
         self.data_type: DataType = data_type
@@ -187,6 +190,9 @@ class DiffPCFGANTrainer(LightningModule):
         self.use_fixed_measure_discriminator_pcfd = use_fixed_measure_discriminator_pcfd
 
         self.output_dir_images: str = output_dir_images
+
+        ### Gradient clipping:
+        self.register_gradient_clipping()
 
         # Diffusion:
         self.diffusion_process = ContinuousDiffusionProcess(

@@ -39,9 +39,9 @@ sns.set()
 ########## All parameters to modify for training:
 #####################################################
 PARAMS_GRID = {
-    "lr_gen": [0.0008],
-    "lr_disc": [0.001],
-    "num_samples_pcf": [10],
+    "lr_gen": [0.000_3],
+    "lr_disc": [0.000_1],
+    "num_samples_pcf": [12],
     "hidden_dim_pcf": [8],
     "num_diffusion_steps": [8],
     "parser_type": ["Truncation"],
