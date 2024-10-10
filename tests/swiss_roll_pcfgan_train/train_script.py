@@ -43,11 +43,11 @@ PARAMS_GRID = {
     "lr_disc": [0.000_1],
     "num_samples_pcf": [12],
     "hidden_dim_pcf": [8],
-    "num_diffusion_steps": [32],
+    "num_diffusion_steps": [32, 128],
     "parser_type": ["Truncation", "Subsampling"],
     "parser_len": [16, 32],
     "scheduler_type": ["Step", "Cosine"],
-    "use_fixed_measure_discriminator_pcfd": [True, False],
+    "use_fixed_measure_discriminator_pcfd": [False],
 }
 ###### Other constants:
 #####################################################
@@ -57,7 +57,7 @@ PATIENCE = 4000
 EPOCHS = 20_001
 GPU_ID = [4]
 SEED = 142
-DATA_SIZE = 800
+DATA_SIZE = 1000
 
 
 #####################################################
